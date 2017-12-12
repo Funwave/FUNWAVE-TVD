@@ -2495,6 +2495,11 @@ SUBROUTINE READ_INPUT
       if(ierr==1)THEN
         IN_Veg=.FALSE.
       endif
+      if(IN_Veg)then
+        CALL READ_FLOAT(Veg_CD,FILE_NAME,'Veg_CD',ierr)
+        CALL READ_FLOAT(Veg_BV,FILE_NAME,'Veg_BV',ierr)
+        CALL READ_FLOAT(Veg_N,FILE_NAME,'Veg_N',ierr)
+      endif
       CALL READ_LOGICAL(IN_Cd,FILE_NAME,'Friction_Matrix',ierr)
       IF(ierr==1)THEN
         IN_Cd = .FALSE.

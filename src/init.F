@@ -237,7 +237,6 @@ SUBROUTINE INITIALIZATION
 
    IF(StretchGrid) THEN
 # if defined (PARALLEL)
-       CALL GetFile(DX_FILE,Dx)
        CALL GetFile(DY_FILE,Dy)
        CALL GetFile(Coriolis_FILE,Coriolis)
 # else

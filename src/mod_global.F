@@ -89,6 +89,7 @@ MODULE GLOBAL
        CHARACTER(LEN=80) ReadType
        CHARACTER(LEN=80) DEPTH_TYPE
        CHARACTER(LEN=80) DEPTH_FILE
+       CHARACTER(LEN=80) VEGETATION_DEPTH_FILE
        CHARACTER(LEN=80) ETA_FILE
        CHARACTER(LEN=80) U_FILE
        CHARACTER(LEN=80) V_FILE
@@ -254,9 +255,13 @@ MODULE GLOBAL
        CHARACTER(LEN=80) WaveCompFile
 ! friction
         LOGICAL :: IN_Cd=.FALSE.
+        LOGICAL :: IN_Veg=.FALSE.
         REAL(SP):: Cd_fixed
         CHARACTER(LEN=80) CD_FILE
+        CHARACTER(LEN=80) Veg_FILE
         REAL(SP),DIMENSION(:,:),ALLOCATABLE :: Cd
+
+        REAL(SP):: veg_cd,veg_n,veg_bv
 
 
 
@@ -318,6 +323,7 @@ MODULE GLOBAL
                   IN_DOMAIN_SOUTH,IN_DOMAIN_NORTH
 # endif
 
+       REAL(SP),DIMENSION(:,:),ALLOCATABLE::vegetation_height
 ! output logical parameters
        INTEGER :: OUTPUT_RES = 1
        LOGICAL :: OUT_U=.FALSE., OUT_V=.FALSE.,OUT_ETA=.FALSE., &

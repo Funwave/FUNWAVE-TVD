@@ -1795,8 +1795,6 @@ SUBROUTINE READ_INPUT
         STOP
       ENDIF
 
-! data reading will be in wavemaker.F
-
           CALL READ_FLOAT(Ywidth_WK,FILE_NAME,'Ywidth_WK',ierr)
       IF(ierr==1)THEN
         Ywidth_WK = LARGE
@@ -1862,14 +1860,12 @@ SUBROUTINE READ_INPUT
        READ(1,*)PeakPeriod  ! useless for this application but should keep for consistency
        DO J=1,NumFreq
           READ(1,*)Per_Ser(J)  ! read in as frequency
-!print*,J,Per_Ser(J)
        ENDDO
        DO I=1,NumDir
           READ(1,*)Theta_Ser(I)
        ENDDO
        DO I=1,NumDir
          READ(1,*)(Amp_Ser(J,I),J=1,NumFreq)
-!print*,I,Amp_Ser(J,I)
        ENDDO
      CLOSE(1)
 
@@ -2495,6 +2491,10 @@ SUBROUTINE READ_INPUT
 # endif
       ENDIF
 
+      CALL READ_LOGICAL(IN_Veg,FILE_NAME,'IN_Veg',ierr)
+      if(ierr==1)THEN
+        IN_Veg=.FALSE.
+      endif
       CALL READ_LOGICAL(IN_Cd,FILE_NAME,'Friction_Matrix',ierr)
       IF(ierr==1)THEN
         IN_Cd = .FALSE.
@@ -2536,17 +2536,60 @@ SUBROUTINE READ_INPUT
  
       CALL READ_FLOAT(Cd_fixed,FILE_NAME,'Cd',ierr)
       IF(ierr==1)THEN
-        Cd_fixed = 0.0_SP
+         Cd_fixed = 0.0_SP
 # if defined (PARALLEL)
-      if (myid.eq.0) THEN
-         WRITE(*,'(A40)')'Cd_fixed Default:  0.0'
-         WRITE(3,'(A40)')'Cd_fixed Default:  0.0'
-      endif
+         if (myid.eq.0) THEN
+            WRITE(*,'(A40)')'Cd_fixed Default:  0.0'
+            WRITE(3,'(A40)')'Cd_fixed Default:  0.0'
+         endif
 # else
          WRITE(*,'(A40)')'Cd_fixed Default:  0.0'
          WRITE(3,'(A40)')'Cd_fixed Default:  0.0'
 # endif
-       ENDIF
+      ENDIF
+
+      !veg_cd,veg_n,veg_bv
+      CALL READ_FLOAT(Veg_Cd,FILE_NAME,'Veg_Cd',ierr)
+      IF(ierr==1)THEN
+         Veg_Cd = 0.0_SP
+# if defined (PARALLEL)
+         if (myid.eq.0) THEN
+            WRITE(*,'(A40)')'Veg_Cd Default:  0.0'
+            WRITE(3,'(A40)')'Veg_Cd Default:  0.0'
+         endif
+# else
+         WRITE(*,'(A40)')'Veg_Cd Default:  0.0'
+         WRITE(3,'(A40)')'Veg_Cd Default:  0.0'
+# endif
+      ENDIF
+
+      CALL READ_FLOAT(Veg_N,FILE_NAME,'Veg_N',ierr)
+      IF(ierr==1)THEN
+         Veg_N = 0.0_SP
+# if defined (PARALLEL)
+         if (myid.eq.0) THEN
+            WRITE(*,'(A40)')'Veg_N Default:  0.0'
+            WRITE(3,'(A40)')'Veg_N Default:  0.0'
+         endif
+# else
+         WRITE(*,'(A40)')'Veg_N Default:  0.0'
+         WRITE(3,'(A40)')'Veg_N Default:  0.0'
+# endif
+      ENDIF
+
+      CALL READ_FLOAT(Veg_Bv,FILE_NAME,'Veg_Bv',ierr)
+      IF(ierr==1)THEN
+         Veg_Bv = 0.0_SP
+# if defined (PARALLEL)
+         if (myid.eq.0) THEN
+            WRITE(*,'(A40)')'Veg_Bv Default:  0.0'
+            WRITE(3,'(A40)')'Veg_Bv Default:  0.0'
+         endif
+# else
+         WRITE(*,'(A40)')'Veg_Bv Default:  0.0'
+         WRITE(3,'(A40)')'Veg_Bv Default:  0.0'
+# endif
+      ENDIF
      
 # if defined (PARALLEL)
        if (myid.eq.0) WRITE(3,'(A13,F12.2)')'Cd_fixed         =', Cd_fixed

@@ -158,6 +158,7 @@ SUBROUTINE ALLOCATE_VARIABLES
       ALLOCATE(Ui(Mloc,Nloc), Vi(Mloc,Nloc),ETAi(Mloc,Nloc),&
         UbarOld(Mloc,Nloc),VbarOld(Mloc,Nloc),EtaOld(Mloc,Nloc) )
 # endif
+      ALLOCATE(vegetation_height(Mloc,Nloc))
 
   ! HeightMax will be used not only in output but also meteo module
         ALLOCATE(HeightMax(Mloc,Nloc))
@@ -523,6 +524,19 @@ SUBROUTINE INITIALIZATION
 # endif
   ENDIF  ! exist
 
+ INQUIRE(FILE=TRIM(VEGETATION_DEPTH_FILE),EXIST=FILE_EXIST)
+  IF(.NOT.FILE_EXIST)THEN
+# if defined (PARALLEL)
+   IF(MYID==0)  &
+   WRITE(*,*) TRIM(VEGETATION_DEPTH_FILE), 'CANNOT BE FOUND. STOP'
+   CALL MPI_FINALIZE (ier)
+   STOP
+# else
+    WRITE(*,*) TRIM(VEGETATION_DEPTH_FILE), 'CANNOT BE FOUND. STOP'
+    STOP
+# endif
+  ENDIF  ! exist
+
 # if defined (PARALLEL)
      call GetFile (DEPTH_FILE,Depth)
 # else
@@ -684,6 +698,26 @@ SUBROUTINE INITIALIZATION
 # endif     
  
 !friction
+     IF(IN_Veg) THEN
+# if defined (PARALLEL)
+      call GetFile(VEG_FILE,vegetation_height)
+# else
+      OPEN(1,FILE=TRIM(VEG_FILE))
+       DO J=Jbeg,Jend
+        READ(1,*)(vegetation_height(I,J),I=Ibeg,Iend)
+       ENDDO
+      CLOSE(1)
+! ghost cells
+      DO I=Ibeg,Iend
+       DO J=1,Nghost
+        vegetation_height(I,J)=vegetation_height(I,Jbeg)
+       ENDDO
+       DO J=Jend+1,Nloc
+        vegetation_height(I,J)=vegetation_height(I,Jend)
+       ENDDO
+      ENDDO
+# endif
+     ENDIF
      IF(IN_Cd) THEN
 # if defined (PARALLEL)
       call GetFile(CD_FILE,Cd)

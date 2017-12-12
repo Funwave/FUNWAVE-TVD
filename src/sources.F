@@ -53,6 +53,13 @@
 !                               conservative form of momentum equations
 !
 ! --------------------------------------------------
+FUNCTION sq(X)
+      USE PARAM
+      IMPLICIT NONE
+      REAL(SP) :: sq
+      REAL(SP), INTENT(IN) :: x
+      sq = X*X
+END FUNCTION
 SUBROUTINE SourceTerms
      USE GLOBAL
 # if defined (VESSEL)
@@ -66,8 +73,20 @@ SUBROUTINE SourceTerms
      REAL,DIMENSION(Mloc,Nloc) :: nu_vis
      LOGICAL :: PQ_scheme = .FALSE.
      REAL(SP) :: xmk,ymk,Dxg,Dyg,WK_Source
+     REAL(SP) :: z0,z2,fac,fricx,fricy,dely,delx,hval,rr,th
+     REAL(SP) :: hx,hxx,hy,hyy,hxy
+     REAL(SP) :: a_x,a_y,b_x,b_y,C0_x,C0_y,C1_x,C1_y,C2_x,C2_y,s
+     REAL(SP) :: zterm0,zterm1,zterm2,zup,zdn,za
+     !REAL(SP) :: veg_cd,veg_n,veg_bv
+     REAL(SP), PARAMETER :: alpha_v = -.53, beta_v = .47
      INTEGER :: kd,kf
-
+     INTERFACE
+       FUNCTION sq(x)
+         USE PARAM
+         REAL(SP) :: sq
+         REAL(SP), INTENT(IN) :: x
+       END FUNCTION
+     END INTERFACE
 
 # if defined (CARTESIAN)
      DXg=DX
@@ -418,6 +437,70 @@ SUBROUTINE SourceTerms
                     -Coriolis(I,J)*0.5_SP*(P(I,J)+P(I+1,J))
 # endif
 
+# endif
+
+# if !defined (VEGETATION)
+
+# define DIV1X(D,V) D = (V(i+1,j) - V(i-1,j))/(2.0*delx)
+# define DIV1Y(D,V) D = (V(i,j+1) - V(i,j-1))/(2.0*dely)
+# define DIV2X(D,V) D = (V(i+1,j) + V(i-1,j) - 2*V(i,j))/(delx*delx)
+# define DIV2Y(D,V) D = (V(i,j+1) + V(i,j-1) - 2*V(i,j))/(dely*dely)
+# define DIVXY(D,V) D = (V(i+1,j+1) - V(i+1,j-1) - V(i-1,j+1) + V(i-1,j-1))/(4*dely*dely)
+
+# if defined (CARTESIAN)
+        delx = dx
+        dely = dy
+# else
+        delx = dx(i,j)
+        dely = dy(i,j)
+#endif
+        zdn = -depth(i,j)
+        zup = zdn+min(vegetation_height(i,j),max(h(i,j),mindepthfrc))
+        fac = 0.5*veg_cd*(veg_bv*hval)*veg_N
+
+        ! Obtain derivatives for h
+        DIV1X(hx,h)
+        DIV2X(hxx,h)
+        DIV1Y(hy,h)
+        DIV2Y(hyy,h)
+        DIVXY(hxy,h)
+
+        ! Make sure we have the latest derivatives of u
+        DIV1X(ux(i,j),u)
+        DIV2X(uxx(i,j),u)
+        DIV1Y(uy(i,j),u)
+        !DIV2Y(uyy(i,j),u)
+        DIVXY(uxy(i,j),u)
+
+        ! Make sure we have the latest derivatives of v
+        DIV1X(vx(i,j),u)
+        !DIV2X(vxx(i,j),u)
+        DIV1Y(vy(i,j),v)
+        DIV2Y(vyy(i,j),v)
+        DIVXY(vxy(i,j),v)
+
+        a_x = 2*hx*ux(i,j) + hy*vx(i,j) + hx*vy(i,j) + uxx(i,j)*h(i, j) + vxy(i,j)*h(i, j) + hxx*u(i, j) + hxy*v(i, j)
+        a_y = hy*ux(i,j) + hx*uy(i,j) + 2*hy*vy(i,j) + uxy(i,j)*h(i, j) + vyy(i,j)*h(i, j) + hxy*u(i, j) + hyy*v(i, j)
+        b_x = uxx(i,j) + vxy(i,j)
+        b_y = uxy(i,j) + vyy(i,j)
+        s = sqrt(u(i,j)**2+v(i,j)**2)
+        C0_x = s*(u(i,j)+2*za*a_x+za**2*b_x)
+        C0_y = s*(u(i,j)+2*za*a_y+za**2*b_y)
+        C1_x = -2*a_x*s
+        C1_y = -2*a_y*s
+        C2_x = -b_x*s
+        C2_y = -b_y*s
+        zterm0 = (zup-zdn)
+        zterm1 = (zup**2-zdn**2)/2.0
+        zterm2 = (zup**3-zdn**3)/3.0
+        fricx = C0_x*zterm0+C1_x*zterm1+C2_x*zterm2
+        fricy = C0_y*zterm0+C1_y*zterm1+C2_y*zterm2
+
+        rr = sqrt(u0(i,j)**2+v0(i,j)**2);
+        th = atan2(v0(i,j),u0(i,j));
+
+        SourceX(i,j) = SourceX(i,j) + fac*fricx
+        SourceY(i,j) = SourceY(i,j) + fac*fricx
 # endif
 
      ENDDO

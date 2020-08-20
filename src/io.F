@@ -1912,6 +1912,8 @@ SUBROUTINE READ_INPUT
         STOP
       ENDIF
 
+! data reading will be in wavemaker.F
+
           CALL READ_FLOAT(Ywidth_WK,FILE_NAME,'Ywidth_WK',ierr)
       IF(ierr==1)THEN
         Ywidth_WK = LARGE
@@ -2002,12 +2004,14 @@ SUBROUTINE READ_INPUT
        READ(1,*)PeakPeriod  ! useless for this application but should keep for consistency
        DO J=1,NumFreq
           READ(1,*)Per_Ser(J)  ! read in as frequency
+!print*,J,Per_Ser(J)
        ENDDO
        DO I=1,NumDir
           READ(1,*)Theta_Ser(I)
        ENDDO
        DO I=1,NumDir
          READ(1,*)(Amp_Ser(J,I),J=1,NumFreq)
+!print*,I,Amp_Ser(J,I)
        ENDDO
        DO I=1,NumDir
          READ(1,*,END=991)(Phase_LEFT(J,I),J=1,NumFreq)

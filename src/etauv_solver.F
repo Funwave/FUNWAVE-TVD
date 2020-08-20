@@ -52,7 +52,7 @@
 !-------------------------------------------------------------------------------------
 SUBROUTINE ESTIMATE_HUV(ISTEP)
      USE GLOBAL
-# if defined (VESSEL_PANEL_SOURCE)
+# if defined (VESSEL)
      USE VESSEL_MODULE
 # endif
      IMPLICIT NONE
@@ -89,8 +89,12 @@ SUBROUTINE ESTIMATE_HUV(ISTEP)
         IF(WaveMaker(1:6)=='WK_IRR'.OR.WaveMaker(1:6)=='TMA_1D'  &
            .OR.WaveMaker(1:6)=='JON_1D'.OR.WaveMaker(1:6)=='JON_2D')THEN
 # if defined (PARALLEL)
-            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
-            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+![---ykchoi Jan/23/2018
+!            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
+!            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+!---ykchoi Jan/23/2018]
 # else
             xmk=(I-Ibeg)*DXg
             ymk=(J-Jbeg)*DYg
@@ -118,8 +122,12 @@ SUBROUTINE ESTIMATE_HUV(ISTEP)
          ENDIF
        ELSEIF(WAVEMAKER(1:6)=='WK_REG')THEN
 # if defined (PARALLEL)
-            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
-            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+![---ykchoi Jan/23/2018
+!            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
+!            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+!---ykchoi Jan/23/2018]
 # else
             xmk=(I-Ibeg)*DXg
             ymk=(J-Jbeg)*DYg
@@ -137,8 +145,12 @@ SUBROUTINE ESTIMATE_HUV(ISTEP)
          ENDIF
        ELSEIF(WAVEMAKER(1:7)=='WK_TIME')THEN
 # if defined (PARALLEL)
-            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
-            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+![---ykchoi Jan/23/2018
+!            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
+!            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+!---ykchoi Jan/23/2018]
 # else
             xmk=(I-Ibeg)*DXg
             ymk=(J-Jbeg)*DYg
@@ -156,8 +168,12 @@ SUBROUTINE ESTIMATE_HUV(ISTEP)
 
        ELSEIF(WAVEMAKER(1:9)=='WK_DATA2D')THEN
 # if defined (PARALLEL)
-            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
-            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+![---ykchoi Jan/23/2018
+!            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
+!            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+!---ykchoi Jan/23/2018]
 # else
             xmk=(I-Ibeg)*DXg
             ymk=(J-Jbeg)*DYg
@@ -178,7 +194,7 @@ SUBROUTINE ESTIMATE_HUV(ISTEP)
 # if defined (CARTESIAN)
         R1(I,J)=-1.0_SP/DXg*(F_right*n_right+F_left*n_left) &
                    -1.0_SP/DYg*(F_top*n_top+F_bottom*n_bottom)
-# if defined (VESSEL_PANEL_SOURCE)
+# if defined (VESSEL)
         R1(I,J)=R1(I,J) +VesselFluxGradient(I,J)
 # endif
   ! end vessel

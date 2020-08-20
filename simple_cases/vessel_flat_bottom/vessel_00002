@@ -1,7 +1,7 @@
 Title: Vessel # 2
-Blue_Star_II
-Length(m), Width(m), Alpha(m), Beta(m), P(unit)
-20.0  8.0, 0.5, 0.5, 3.0
+PRESSURE, 1
+Length(m), Width(m), Alpha1(m),  Alpha2(m), Beta(m), P(unit)
+20.0  8.0, 0.5, 0.5, 0.5, 3.0
 Time, X(m), Y(m)  (relative to the origin of the coordinates)
 0.0   450.0 60.0
 100.0 -50.0 60.0

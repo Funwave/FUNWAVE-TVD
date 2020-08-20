@@ -1,0 +1,7 @@
+Title: Vessel # 1
+PRESSURE, 1
+Length(m), Width(m), Alpha1, Alpha2 Beta, P(m)
+20.0  8.0, 0.0, 0.0, 0.5, 3.0
+Time, X(m), Y(m)  (relative to the origin of the coordinates)
+0.0    50.0  60.0
+100.0 1050.0 60.0

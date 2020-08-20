@@ -1,0 +1,7 @@
+Title: Vessel # 5
+SLENDER, 2
+Length(m), Width(m), Alpha1, Alpha2, Beta, F(unit)
+10.0  5.0, 0.8, 0.8, 0.9, 40.0
+Time, X(m), Y(m)  (relative to the origin of the coordinates)
+0.0   50.0   300.0
+100.0 1050.0 300.0

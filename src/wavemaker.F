@@ -58,7 +58,10 @@ SUBROUTINE WAVEMAKER_INITIALIZATION
      USE IFPORT
 # endif
      IMPLICIT NONE
-
+     INTEGER :: FreqCount,DireCount
+     REAL(SP),DIMENSION(:),ALLOCATABLE :: DireTmp,FreqTmp
+     REAL(SP),DIMENSION(:,:),ALLOCATABLE :: WaveCompTmp
+     LOGICAL :: INPUT_WAVE_PHASE = .FALSE.
 ! internal wavemaker of wei and kirby
 
      IF(WaveMaker(1:6)=='WK_REG') THEN
@@ -193,13 +196,9 @@ SUBROUTINE WAVEMAKER_INITIALIZATION
      IF(WaveMaker(1:9)=='WK_DATA2D')THEN
       OPEN(1,FILE=TRIM(WaveCompFile))
        READ(1,*)NumFreq,NumDir
-       ALLOCATE (WAVE_COMP(NumFreq,NumDir),Beta_gen2D(NumFreq,NumDir),D_gen2D(NumFreq,NumDir),  &
-          Phase2D(NumFreq,NumDir), &
-          Freq(NumFreq),Dire(NumDir),rlamda2D(NumFreq,NumDir))
-
-       ! define cm sm here to make consistence with irregular wave
-       ALLOCATE (Cm(Mloc,Nloc,NumFreq),Sm(Mloc,Nloc,NumFreq))
-       ALLOCATE (OMGN2D(NumFreq))
+       ALLOCATE (WAVE_COMP(NumFreq,NumDir),Freq(NumFreq),Dire(NumDir), &
+                 DireTmp(NumDir),FreqTmp(NumFreq),WaveCompTmp(NumFreq,NumDir), &
+                 Phase2D(NumFreq,NumDir))
  
        READ(1,*)PeakPeriod
        DO J=1,NumFreq
@@ -211,12 +210,97 @@ SUBROUTINE WAVEMAKER_INITIALIZATION
        DO I=1,NumDir
          READ(1,*)(WAVE_COMP(J,I),J=1,NumFreq)
        ENDDO
+       DO I=1,NumDir
+         READ(1,*,END=110)(Phase2D(J,I),J=1,NumFreq)
+       ENDDO
+
        CLOSE(1)
+
+# if defined (PARALLEL)
+         if(myid.eq.0)then
+          WRITE(*,*) 'You input phase info'
+          WRITE(3,*) 'You input phase info'
+         endif
+# else
+          WRITE(*,*) 'You input phase info'
+          WRITE(3,*) 'You input phase info'
+# endif
+
+109    INPUT_WAVE_PHASE = .TRUE.
+110    CONTINUE
+
+!  ----
+! remove bad components caused by conversion from other programs like SWAN or measurements
+! only consider the 2D array of spectral data
+       FreqCount = 0
+       DireCount = 0
+
+       DO I=1,NumDir
+        IF(ABS(Dire(I)).LT.60.0_SP)THEN
+         DireCount = DireCount +1
+         DireTmp(DireCount)=Dire(I)
+         DO J=1,NumFreq
+           WaveCompTmp(J,DireCount) = WAVE_COMP(J,I)   
+         ENDDO
+        ENDIF
+       ENDDO
+
+       DO J=1,NumFreq
+          FreqTmp(J)=Freq(J)
+       ENDDO
+
+       NumDir=DireCount
+
+       DEALLOCATE (WAVE_COMP,Freq,Dire)   
+
+       ALLOCATE (WAVE_COMP(NumFreq,NumDir),Beta_gen2D(NumFreq,NumDir),D_gen2D(NumFreq,NumDir),  &
+          Freq(NumFreq),Dire(NumDir),rlamda2D(NumFreq,NumDir))
+
+       ! define cm sm here to make consistence with irregular wave
+       ALLOCATE (Cm(Mloc,Nloc,NumFreq),Sm(Mloc,Nloc,NumFreq))
+       ALLOCATE (OMGN2D(NumFreq))
+
+       DO I=1,NumDir
+         Dire(I)=DireTmp(I)
+       ENDDO
+
+       DO J=1,NumFreq
+         Freq(J)=FreqTmp(J)
+       ENDDO
+
+       DO J=1,NumFreq
+       DO I=1,NumDir
+         WAVE_COMP(J,I)=WaveCompTmp(J,I)
+       ENDDO
+       ENDDO
+
+       DEALLOCATE (DireTmp,FreqTmp,WaveCompTmp)
+
+# if defined (PARALLEL)
+         if(myid.eq.0)then
+          WRITE(*,*) 'You use NumFreq:', NumFreq
+          WRITE(3,*) 'You use NumDir:', NumDir
+         endif
+# else
+          WRITE(*,*) 'You use NumFreq:', NumFreq
+          WRITE(3,*) 'You use NumDir:', NumDir
+# endif
+
+!  ----
 
        CALL WK_WAVEMAKER_2D_SPECTRAL_DATA & 
                (NumFreq,NumDir,Freq,Dire,WAVE_COMP,PeakPeriod,DEP_WK,Delta_WK,D_gen2D,beta_gen2D,&
                rlamda2D,Width_WK)
-               
+
+     IF(INPUT_WAVE_PHASE)THEN   
+
+       DO J=1,NumFreq
+       DO I=1,NumDir
+          Phase2D(J,I)=Phase2D(J,I)*0.005555555555556*pi
+       ENDDO
+       ENDDO
+
+     ELSE            
 ! random phase
        DO J=1,NumFreq
        DO I=1,NumDir
@@ -229,7 +313,7 @@ SUBROUTINE WAVEMAKER_INITIALIZATION
 # endif
        ENDDO
        ENDDO
-
+     ENDIF
 
 !      make efficient calculation fyshi 07/07/2016
 
@@ -364,6 +448,9 @@ SUBROUTINE WK_WAVEMAKER_2D_SPECTRAL_DATA &
                (NumFreq,NumDir,Freq,DireD,WAVE_COMP,PeakPeriod,H_gen,delta,D_gen,beta_gen,rlamda,width)
      USE PARAM
      USE GLOBAL, ONLY : PERIODIC,DY,Nglob
+# if defined (PARALLEL)
+     USE GLOBAL,ONLY : myid,ier
+# endif
      IMPLICIT NONE
      INTEGER,INTENT(IN) :: NumFreq,NumDir
      REAL(SP) :: alpha,alpha1,omgn,tb,tc,wkn,C_phase,wave_length,&
@@ -464,8 +551,16 @@ SUBROUTINE WK_WAVEMAKER_2D_SPECTRAL_DATA &
       ENDIF 
 
 # if defined (PARALLEL)
-# else
+     IF(myid==0)THEN
+       WRITE(*,*) 'wave angle you set:', Dire(ndir)*180/pi
+       WRITE(*,*) 'wave angle in calculation:', angle2*180/pi
+       WRITE(*,*) 'chosen between', angle1*180/pi, 'and', tmp3*180/pi
 
+       WRITE(3,*) 'wave angle you set:', Dire(ndir)*180/pi
+       WRITE(3,*) 'wave angle in calculation:', angle2*180/pi
+       WRITE(3,*) 'chosen between', angle1*180/pi, 'and', tmp3*180/pi
+     ENDIF
+# else
        WRITE(*,*) 'wave angle you set:', Dire(ndir)*180/pi
        WRITE(*,*) 'wave angle in calculation:', angle2*180/pi
        WRITE(*,*) 'chosen between', angle1*180/pi, 'and', tmp3*180/pi
@@ -476,6 +571,10 @@ SUBROUTINE WK_WAVEMAKER_2D_SPECTRAL_DATA &
 # endif
 
        Dir2D(nfre,ndir) = angle2
+
+    ELSE ! theta = zero
+     
+       Dir2D(nfre,ndir) = ZERO
 
     ENDIF ! end theta .ne.zero
 
@@ -553,7 +652,8 @@ SUBROUTINE CALCULATE_Cm_Sm(M,N,DX,DY,Xc,Ibeg,Jbeg,mfreq,mtheta,D_gen,phi1, &
                width,rlamda,beta_gen,Cm,Sm)
      USE PARAM
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob
+     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob, &
+	                  iista,jjsta   !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER,INTENT(IN) :: M,N,mfreq,mtheta,Ibeg,Jbeg    
@@ -573,14 +673,23 @@ SUBROUTINE CALCULATE_Cm_Sm(M,N,DX,DY,Xc,Ibeg,Jbeg,mfreq,mtheta,D_gen,phi1, &
 
 # if defined (PARALLEL)
             Cm(i,j,kf)=Cm(i,j,kf) &
-             +D_gen(kf,ktheta)*exp(-beta_gen(kf)*((I-Ibeg +npx*Mglob/px)*DX-Xc)**2) &
+!             +D_gen(kf,ktheta)*exp(-beta_gen(kf)*((I-Ibeg +npx*Mglob/px)*DX-Xc)**2) &
+!ykchoi Jan/23/2018
+             +D_gen(kf,ktheta)*exp(-beta_gen(kf)*((I-Ibeg + (iista-1) )*DX-Xc)**2) &
           *cos(rlamda(kf,ktheta) &
-          *((J-Jbeg  +npy*Nglob/py)*DY-ZERO)+phi1(kf,ktheta))
+![ykchoi Jan/23/2018 --- missing part
+!          *((J-Jbeg  +npy*Nglob/py)*DY-ZERO)+phi1(kf,ktheta))
+          *((J-Jbeg  +(jjsta - 1) )*DY-ZERO)+phi1(kf,ktheta))
+!ykchoi Jan/23/2018] --- missing part
 
             Sm(i,j,kf)=Sm(i,j,kf) &
-             +D_gen(kf,ktheta)*exp(-beta_gen(kf)*((I-Ibeg+ npx*Mglob/px)*DX-Xc)**2) &
+!             +D_gen(kf,ktheta)*exp(-beta_gen(kf)*((I-Ibeg+ npx*Mglob/px)*DX-Xc)**2) &
+!ykchoi Jan/23/2018
+             +D_gen(kf,ktheta)*exp(-beta_gen(kf)*((I-Ibeg+ (iista-1) )*DX-Xc)**2) &
           *sin(rlamda(kf,ktheta) &
-          *((J-Jbeg +npy*Nglob/py)*DY-ZERO)+phi1(kf,ktheta))
+!          *((J-Jbeg +npy*Nglob/py)*DY-ZERO)+phi1(kf,ktheta))     
+!ykchoi Jan/23/2018
+          *((J-Jbeg +(jjsta - 1))*DY-ZERO)+phi1(kf,ktheta))
 # else
             Cm(i,j,kf)=Cm(i,j,kf) &
              +D_gen(kf,ktheta)*exp(-beta_gen(kf)*((I-Ibeg)*DX-Xc)**2) &
@@ -619,7 +728,8 @@ SUBROUTINE CALCULATE_DATA2D_Cm_Sm
                        Segma_Ser,&
                        Cm_eta,Sm_eta,Cm_u,Sm_u,Cm_v,Sm_v,PERIODIC
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob
+     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob, &
+	                  iista, jjsta    !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER :: Iter,KK,K,KKK
@@ -682,11 +792,19 @@ SUBROUTINE CALCULATE_DATA2D_Cm_Sm
        DO I=1,Mloc
 # if defined (PARALLEL)
 # if defined (CARTESIAN)
-         X_maker=(I-Ibeg+npx*Mglob/px)*DX
-         Y_maker=(J-Jbeg+npy*Nglob/py)*DY 
+![---ykchoi Jan/23/2018
+!         X_maker=(I-Ibeg+npx*Mglob/px)*DX
+!         Y_maker=(J-Jbeg+npy*Nglob/py)*DY
+         X_maker=( I-Ibeg+(iista-1) )*DX
+         Y_maker=( J-Jbeg+(jjsta-1) )*DY
+!---ykchoi Jan/23/2018] 
 # else
-         X_maker=(I-Ibeg+npx*Mglob/px)*DX(I,J)
-         Y_maker=(J-Jbeg+npy*Nglob/py)*DY(I,J)
+![---ykchoi Jan/23/2018
+!         X_maker=(I-Ibeg+npx*Mglob/px)*DX(I,J)
+!         Y_maker=(J-Jbeg+npy*Nglob/py)*DY(I,J)
+         X_maker=( I-Ibeg+(iista-1) )*DX(I,J)
+         Y_maker=( J-Jbeg+(jjsta-1) )*DY(I,J)
+!---ykchoi Jan/23/2018]
 # endif
 
 # else
@@ -904,7 +1022,8 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm &
 ! ***
 
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob
+     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob, &
+	                  iista, jjsta   !ykchoi Jan/23/2018
 # endif
 # if defined(INTEL)
      USE IFPORT
@@ -1033,6 +1152,11 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm &
            theta = -pi/3.0_SP + theta_input*pi/180.0_SP  & 
 	             + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)
 
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ----
+
            AG(ktheta) = 1.0_SP/( 2.0_SP*pi )
 	     do k_n=1,N_spec
 	        AG(ktheta) = AG(ktheta) +   &
@@ -1042,7 +1166,7 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm &
 	     sumAG = sumAG + AG(ktheta)
 	  
 	  enddo
-	  AG(:) = AG(:)/sumAG;    !Because integral of AG should be 1.
+	  AG(:) = ABS(AG(:)/sumAG);    !Because integral of AG should be 1.
 
       ENDIF ! 1D or not
 
@@ -1077,6 +1201,12 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm &
       ELSE
         theta = -pi/3.0_SP + theta_input*pi/180.0_SP  & 
 	         + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)   !ykchoi (11/07/2016)
+
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ----
+
       ENDIF
 
         alpha=-0.39_SP
@@ -1137,11 +1267,19 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm &
        DO I=1,Mloc
 # if defined (PARALLEL)
 # if defined (CARTESIAN)
-         X_maker=(I-Ibeg+npx*Mglob/px)*DX
-         Y_maker=(J-Jbeg+npy*Nglob/py)*DY 
+![---ykchoi Jan/23/2018
+!         X_maker=(I-Ibeg+npx*Mglob/px)*DX
+!         Y_maker=(J-Jbeg+npy*Nglob/py)*DY
+         X_maker=( I-Ibeg+(iista - 1) )*DX
+         Y_maker=( J-Jbeg+(jjsta - 1) )*DY 
+!---ykchoi Jan/23/2018]
 # else
-         X_maker=(I-Ibeg+npx*Mglob/px)*DX(I,J)
-         Y_maker=(J-Jbeg+npy*Nglob/py)*DY(I,J)
+![---ykchoi Jan/23/2018
+!         X_maker=(I-Ibeg+npx*Mglob/px)*DX(I,J)
+!         Y_maker=(J-Jbeg+npy*Nglob/py)*DY(I,J)
+         X_maker=( I-Ibeg+(iista - 1) )*DX(I,J)
+         Y_maker=( J-Jbeg+(jjsta - 1) )*DY(I,J)
+!---ykchoi Jan/23/2018]
 # endif
 
 # else
@@ -1227,7 +1365,8 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm_EQUAL_DFREQ &
 ! ***
 
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob
+     USE GLOBAL, ONLY : myid,npx,npy,px,py,Mglob,Nglob, &
+	                  iista, jjsta   !ykchoi Jan/23/2018
 # endif
 # if defined(INTEL)
      USE IFPORT
@@ -1317,6 +1456,11 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm_EQUAL_DFREQ &
            theta = -pi/3.0_SP + theta_input*pi/180.0_SP  & 
 	             + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)
 
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ----
+
            AG(ktheta) = 1.0_SP/( 2.0_SP*pi )
 	     do k_n=1,N_spec
 	        AG(ktheta) = AG(ktheta) +   &
@@ -1326,7 +1470,7 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm_EQUAL_DFREQ &
 	     sumAG = sumAG + AG(ktheta)
 	  
 	  enddo
-	  AG(:) = AG(:)/sumAG;    !Because integral of AG should be 1.
+	  AG(:) = ABS(AG(:)/sumAG);    !Because integral of AG should be 1.
 
       ENDIF ! 1D or not
 
@@ -1360,6 +1504,12 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm_EQUAL_DFREQ &
       ELSE
         theta = -pi/3.0_SP + theta_input*pi/180.0_SP  & 
 	         + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)   !ykchoi (11/07/2016)
+
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ----
+
       ENDIF
 
         alpha=-0.39_SP
@@ -1420,11 +1570,19 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm_EQUAL_DFREQ &
        DO I=1,Mloc
 # if defined (PARALLEL)
 # if defined (CARTESIAN)
-         X_maker=(I-Ibeg+npx*Mglob/px)*DX
-         Y_maker=(J-Jbeg+npy*Nglob/py)*DY 
+![---ykchoi Jan/23/2018
+!         X_maker=(I-Ibeg+npx*Mglob/px)*DX
+!         Y_maker=(J-Jbeg+npy*Nglob/py)*DY
+         X_maker=( I-Ibeg+(iista-1) )*DX
+         Y_maker=( J-Jbeg+(jjsta-1) )*DY 
+!---ykchoi Jan/23/2018]
 # else
-         X_maker=(I-Ibeg+npx*Mglob/px)*DX(I,J)
-         Y_maker=(J-Jbeg+npy*Nglob/py)*DY(I,J)
+![---ykchoi Jan/23/2018
+!         X_maker=(I-Ibeg+npx*Mglob/px)*DX(I,J)
+!         Y_maker=(J-Jbeg+npy*Nglob/py)*DY(I,J)
+         X_maker=( I-Ibeg+(iista-1) )*DX(I,J)
+         Y_maker=( J-Jbeg+(jjsta-1) )*DY(I,J)
+!---ykchoi Jan/23/2018]
 # endif
 
 # else
@@ -1438,7 +1596,6 @@ SUBROUTINE CALCULATE_TMA_Cm_Sm_EQUAL_DFREQ &
 # endif
 
 # endif
-   
 
           Cm_eta(I,J,KK)=Cm_eta(I,J,KK)+Amp_Ser(KK,KKK)*COS( &
                    Wave_Number_Ser(KK)*SIN(Theta_Per)*Y_maker &
@@ -1608,6 +1765,11 @@ SUBROUTINE WK_WAVEMAKER_IRREGULAR_WAVE &
           theta = -pi/3.0_SP + theta_input*pi/180.0_SP  & 
 	           + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)
 
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ----
+
           AG(ktheta) = 1.0_SP/( 2.0_SP*pi )
 	    do k_n=1,N_spec
 	       AG(ktheta) = AG(ktheta) +  & 
@@ -1617,7 +1779,7 @@ SUBROUTINE WK_WAVEMAKER_IRREGULAR_WAVE &
 	    sumAG = sumAG + AG(ktheta);
 	  
 	 enddo
-	 AG(:) = AG(:)/sumAG;   !Because integral of AG should be 1.
+	 AG(:) = ABS(AG(:)/sumAG);   !Because integral of AG should be 1.
 
 
       ENDIF ! 1D or not
@@ -1651,7 +1813,12 @@ SUBROUTINE WK_WAVEMAKER_IRREGULAR_WAVE &
         theta = 0.0_SP
       ELSE
         theta = -pi/3.0_SP + theta_input*pi/180.0_SP &
-	         + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)   
+	         + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)  
+
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ---- 
  
       ENDIF
 
@@ -1852,6 +2019,11 @@ SUBROUTINE WK_EQUAL_DFREQ_IRREGULAR_WAVE &
           theta = -pi/3.0_SP + theta_input*pi/180.0_SP  & 
 	           + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)
 
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ----
+
           AG(ktheta) = 1.0_SP/( 2.0_SP*pi )
 	    do k_n=1,N_spec
 	       AG(ktheta) = AG(ktheta) +  & 
@@ -1859,10 +2031,11 @@ SUBROUTINE WK_EQUAL_DFREQ_IRREGULAR_WAVE &
 	        *cos( k_n*(theta - theta_input*pi/180.0_SP) )
 	    enddo
 	    sumAG = sumAG + AG(ktheta);
-	  
+! print*,theta*180/pi,AG(ktheta) ! check negative	  
 	 enddo
-	 AG(:) = AG(:)/sumAG;   !Because integral of AG should be 1.
+	 AG(:) = ABS(AG(:)/sumAG);   !Because integral of AG should be 1.
 
+! small AG could be negative 04/13/2018
 
       ENDIF ! 1D or not
 
@@ -1887,6 +2060,11 @@ SUBROUTINE WK_EQUAL_DFREQ_IRREGULAR_WAVE &
       ELSE
         theta = -pi/3.0_SP + theta_input*pi/180.0_SP &
 	         + 2.0_SP/3.0_SP*pi/(real(ktotal)-1.0_SP)*(real(ktheta)-1.0_SP)   
+
+!  ----    for users dont know the range
+           IF(theta.gt.0.5_SP*pi) theta = 0.5_SP*pi
+           IF(theta.lt.-0.5_SP*pi) theta = -0.5_SP*pi
+!  ----
  
       ENDIF
 
@@ -1974,7 +2152,6 @@ SUBROUTINE WK_EQUAL_DFREQ_IRREGULAR_WAVE &
 
         enddo ! end kf
         enddo ! end ktheta
-	  
 
 ! calculate wavemaker width
         omgn_tmp=2.0_SP*pi*fm
@@ -2128,7 +2305,8 @@ SUBROUTINE VISCOSITY_WMAKER (M,N,ETAT,visbrk,H,MinDepthFrc,DX,DY)
      USE GLOBAL,ONLY : Depth,nu_break,ETA,Nghost,Xc_WK,Yc_WK,Ibeg,&
                        Jbeg,Width_WK,Xc_WK,Yc_WK,Ywidth_WK,WAVEMAKER_visbrk,nu_bkg
 # if defined(PARALLEL)
-     USE GLOBAL,ONLY : npx,npy
+     USE GLOBAL,ONLY : npx,npy, &
+	                 iista,jjsta    !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER,INTENT(IN) :: M,N
@@ -2160,8 +2338,12 @@ SUBROUTINE VISCOSITY_WMAKER (M,N,ETAT,visbrk,H,MinDepthFrc,DX,DY)
 ! set viscosity
 ! wavemaker
 # if defined (PARALLEL)
-        xmk=(I-Ibeg)*DXg+npx*(M-2*Nghost)*DXg
-        ymk=(J-Jbeg)*DYg+npy*(N-2*Nghost)*DYg
+![---ykchoi Jan/23/2018
+!        xmk=(I-Ibeg)*DXg+npx*(M-2*Nghost)*DXg
+!        ymk=(J-Jbeg)*DYg+npy*(N-2*Nghost)*DYg
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+!---ykchoi Jan/23/2018]
 # else
         xmk=(I-Ibeg)*DXg
         ymk=(J-Jbeg)*DYg
@@ -2256,9 +2438,6 @@ SUBROUTINE IRREGULAR_LEFT_BC
 # if defined (PARALLEL)
       endif
 # endif
-
-!print*, 'eta',rtime,eta(1,10),eta(2,10),eta(3,10),eta(4,10)
-!print*, 'u', rtime,u(1,10),u(2,10),u(3,10),u(4,10)
 
 END SUBROUTINE IRREGULAR_LEFT_BC
 

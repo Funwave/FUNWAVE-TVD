@@ -55,7 +55,8 @@
 MODULE VESSEL_MODULE
   USE PARAM
   USE GLOBAL,ONLY : Mloc,Nloc,Nghost,Ibeg,Iend,Jbeg,Jend,DX,DY, &
-                    H,ETA
+                    H,ETA,ETA0,Xco,Yco
+
   USE INPUT_READ
 #if defined (PARALLEL)
   USE GLOBAL,ONLY : myid,ier, npx,npy,PX,PY
@@ -64,27 +65,39 @@ MODULE VESSEL_MODULE
   IMPLICIT NONE
   SAVE
 
-    INTEGER :: NumVessel,Kves
+    INTEGER :: NumVessel,Kves,II,JJ
+    INTEGER,DIMENSION(:),ALLOCATABLE :: VesselType
+    CHARACTER(LEN=80),DIMENSION(:),ALLOCATABLE:: SourceType
     REAL(SP),DIMENSION(:),ALLOCATABLE :: Xvessel1,Yvessel1,Xvessel2,Yvessel2, &
                                        LengthVessel,WidthVessel, &
-                                       AlphaVessel,BetaVessel,Pvessel, &
+                                       AlphaVessel1,AlphaVessel2,BetaVessel,Pvessel, &
                                        TimeVessel1,TimeVessel2,ThetaVessel
     REAL(SP),DIMENSION(:,:),ALLOCATABLE :: VesselPressureTotal,VesselPressureEach, &
                                        VesselPressureX,VesselPressureY
-    REAL(SP),DIMENSION(:),ALLOCATABLE ::  Xco,Yco
     LOGICAL :: OUT_VESSEL = .TRUE.
     REAL(SP),DIMENSION(:),ALLOCATABLE :: ResistanceX,ResistanceY,ResPosX,ResNegX, &
                                          ResPosY,ResNegY
     REAL(SP):: PLOT_INTV_VESSEL,PLOT_COUNT_VESSEL
-# if defined (VESSEL_PANEL_SOURCE)
+
     REAL(SP),DIMENSION(:,:),ALLOCATABLE :: VesselFluxGradient,VesselFluxGradientEach, &
                                            Gz
     REAL(SP),DIMENSION(:),ALLOCATABLE :: Uvel,Vvel
-# endif
 
-#if defined (PARALLEL)
-    REAL(SP) :: myvar
-# endif    
+    REAL(SP) :: Xves,Yves,Lves,Wves,P_x,P_y,DetaX,DetaY
+
+!   deep draft vessel
+
+# if defined (DEEP_DRAFT_VESSEL)
+    LOGICAL :: MaskMethod = .TRUE.
+    LOGICAL :: FrictionMethod = .TRUE.
+    LOGICAL :: ViscosityMethod = .FALSE.    
+    REAL(SP) :: CdDeepDraft
+    REAL(SP) :: VisDeepDraft
+    REAL(SP),DIMENSION(:,:),ALLOCATABLE :: CdVessel_2D,VisVessel_2D
+     INTEGER,DIMENSION(:,:),ALLOCATABLE :: MaskVessel
+# endif
+  
+    LOGICAL :: MakeVesselDraft = .TRUE.
 
 
 !INTERFACE READ_FOUR_TYPE_VALUES
@@ -97,7 +110,10 @@ CONTAINS
 ! READ VESSEL
 
 SUBROUTINE VESSEL_INITIAL
-  USE GLOBAL,ONLY : itmp1,itmp2,itmp3,itmp4,itmp5,SMALL
+  USE GLOBAL,ONLY : itmp1,itmp2,itmp3,itmp4,itmp5,SMALL, INPUT_FILE_NAME
+# if defined (PARALLEL)
+  USE GLOBAL,ONLY : iista,jjsta   !ykchoi Jan/23/2018
+# endif
                     
   USE INPUT_READ
   IMPLICIT NONE
@@ -105,11 +121,12 @@ SUBROUTINE VESSEL_INITIAL
   CHARACTER(LEN=80)::FILE_VESSEL=' '
   CHARACTER(LEN=80) :: VESSEL_FOLDER=' '
   CHARACTER(LEN=80)::TMP_NAME=' '
+  CHARACTER(LEN=80)::VesselName = ' '
   INTEGER :: Ifile,ierr
-  CHARACTER(LEN=80):: VesselName
+
 
 ! read vessel number and folder from input.txt
-      FILE_NAME='input.txt'
+      FILE_NAME=INPUT_FILE_NAME
 
 ! vessel folder
       CALL READ_STRING(VESSEL_FOLDER,FILE_NAME,'VESSEL_FOLDER',ierr)
@@ -128,36 +145,123 @@ SUBROUTINE VESSEL_INITIAL
 
       CALL READ_LOGICAL(OUT_VESSEL,FILE_NAME,'OUT_VESSEL',ierr)
 
+! deep draft vessel
+
+
+# if defined (DEEP_DRAFT_VESSEL)
+  ! ---------
+      CALL READ_LOGICAL(MaskMethod,FILE_NAME,'MaskMethod',ierr)      
+      IF(ierr==1)THEN
+        MaskMethod = .TRUE.
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A80)') 'Deep draft, Mask method is used.'
+         WRITE(3,'(A80)') 'Deep draft, Mask method is used.'
+      endif
+# else
+         WRITE(*,'(A80)') 'Deep draft, Mask method is used.'
+         WRITE(3,'(A80)') 'Deep draft, Mask method is used.'
+# endif
+      ENDIF
+
+  ! frction ---
+      CALL READ_LOGICAL(FrictionMethod,FILE_NAME,'FrictionMethod',ierr)      
+      IF(ierr==1)THEN
+        FrictionMethod = .TRUE.
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A80)') 'Deep draft, Friction method used.'
+         WRITE(3,'(A80)') 'Deep draft, Friction method used.'
+      endif
+# else
+         WRITE(*,'(A80)') 'Deep draft, Friction method used.'
+         WRITE(3,'(A80)') 'Deep draft, Friction method used.'
+# endif
+      ENDIF
+
+      IF (FrictionMethod) THEN
+      CALL READ_FLOAT(CdDeepDraft,FILE_NAME,'CdDeepDraft',ierr) 
+      
+      IF(ierr==1)THEN
+        CdDeepDraft = 0.1_SP
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'You dont specify CdDeepDraft, use 0.1'
+         WRITE(3,'(A40)')'You dont specify CdDeepDraft, use 0.1'
+      endif
+# else
+         WRITE(*,'(A40)')'You dont specify CdDeepDraft, use 0.1'
+         WRITE(3,'(A40)')'You dont specify CdDeepDraft, use 0.1'
+# endif
+      ENDIF      
+
+      ENDIF  ! end friction method
+
+  ! viscosity ---
+      CALL READ_LOGICAL(ViscosityMethod,FILE_NAME,'ViscosityMethod',ierr)      
+      IF(ierr==1)THEN
+        ViscosityMethod = .FALSE.
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A80)') 'Deep draft, Viscosity method NOT used.'
+         WRITE(3,'(A80)') 'Deep draft, Viscosity method NOT used.'
+      endif
+# else
+         WRITE(*,'(A80)') 'Deep draft, Viscosity method NOT used.'
+         WRITE(3,'(A80)') 'Deep draft, Viscosity method NOT used.'
+# endif
+      ENDIF
+
+      IF (ViscosityMethod) THEN
+      CALL READ_FLOAT(VisDeepDraft,FILE_NAME,'VisDeepDraft',ierr) 
+      
+      IF(ierr==1)THEN
+        VisDeepDraft = 0.1_SP
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'You dont specify VisDeepDraft, use 0.1'
+         WRITE(3,'(A40)')'You dont specify VisDeepDraft, use 0.1'
+      endif
+# else
+         WRITE(*,'(A40)')'You dont specify VisDeepDraft, use 0.1'
+         WRITE(3,'(A40)')'You dont specify VisDeepDraft, use 0.1'
+# endif
+      ENDIF      
+
+      ENDIF  ! end viscosity method
+
+  ! -----------
+# endif
+! end deep draft vessel
+
       ALLOCATE (Xvessel1(NumVessel),Yvessel1(NumVessel),  &
                 Xvessel2(NumVessel),Yvessel2(NumVessel),  &
                 TimeVessel1(NumVessel),TimeVessel2(NumVessel), &
                 LengthVessel(NumVessel),WidthVessel(NumVessel), &
-                AlphaVessel(NumVessel),BetaVessel(NumVessel),  &
+                AlphaVessel1(NumVessel),AlphaVessel2(NumVessel), &
+                BetaVessel(NumVessel),  &
                 Pvessel(NumVessel),ThetaVessel(NumVessel),&
                 ResistanceX(NumVessel),ResistanceY(NumVessel), &
                 ResPosX(NumVessel),ResNegX(NumVessel), &
                 ResPosY(NumVessel),ResNegY(NumVessel) )
 
-     ALLOCATE (Xco(Mloc),Yco(Nloc))
-
-# if defined (VESSEL_PANEL_SOURCE)
 
       ALLOCATE (VesselFluxGradient(Mloc,Nloc),VesselFluxGradientEach(Mloc,Nloc), &
                 Gz(Mloc,Nloc))
       ALLOCATE (Uvel(NumVessel),Vvel(NumVessel))
+      ALLOCATE (SourceType(NumVessel),VesselType(NumVessel))
       
       Gz = ZERO
       Uvel = ZERO
       Vvel = ZERO
 
-# else
-
       ALLOCATE (VesselPressureTotal(Mloc,Nloc), VesselPressureEach(Mloc,Nloc),&
                 VesselPressureX(Mloc,Nloc), &
                  VesselPressureY(Mloc,Nloc) )
 
+# if defined (DEEP_DRAFT_VESSEL)
+     ALLOCATE (CdVessel_2D(Mloc,Nloc),VisVessel_2D(Mloc,Nloc),MaskVessel(Mloc,Nloc))
 # endif
-
 
 ! plot vessel intitial
      PLOT_COUNT_VESSEL = 0
@@ -171,32 +275,6 @@ SUBROUTINE VESSEL_INITIAL
        PLOT_INTV_VESSEL = SMALL
      ENDIF
       
-! Xco, and Yco
-
-# if defined (PARALLEL)
-     Xco(Ibeg) = npx*(Mloc-2*Nghost)*DX
-# else
-     Xco(Ibeg) = ZERO
-# endif
-     DO I = Ibeg+1,Mloc
-       Xco(I) = Xco(I-1)+DX
-     ENDDO
-     DO I = Ibeg-1,Ibeg-Nghost,-1
-       Xco(I) = Xco(I+1)-DX
-     ENDDO
-
-# if defined (PARALLEL)
-     Yco(Jbeg) = npy*(Nloc-2*Nghost)*DY
-# else
-     Yco(Jbeg) = ZERO
-# endif
-     DO J = Jbeg+1,Nloc
-       Yco(J) = Yco(J-1)+DY
-     ENDDO
-     DO J = Jbeg-1,Jbeg-Nghost,-1
-       Yco(J) = Yco(J+1)-DY
-     ENDDO
-
   DO Kves = 1, NumVessel
 
 !  file name
@@ -233,11 +311,40 @@ SUBROUTINE VESSEL_INITIAL
   OPEN(Ifile,FILE=TRIM(TMP_NAME))
 
 ! read file
-         READ(Ifile,*)  ! title
-         READ(Ifile,*)  VesselName  ! vessel name
-         READ(Ifile,*)  ! length and width
+         READ(Ifile,'(A80)')  VesselName 
+         READ(Ifile,*)  SourceType(Kves), VesselType(Kves)
+
+         READ(Ifile,*)  ! length, width, etc
+        IF(SourceType(Kves)(1:2)=='PR')THEN
          READ(Ifile,*)  LengthVessel(Kves), WidthVessel(Kves), &
-                      AlphaVessel(Kves),BetaVessel(Kves),Pvessel(Kves)
+                      AlphaVessel1(Kves),AlphaVessel2(Kves), &
+                      BetaVessel(Kves),Pvessel(Kves)
+!                for type 2 divid and volker 2017, alpha1 is cl,alpha2 is cb
+!                beta is a
+
+!   I remove the following protection, but will figure out how to avoid 
+!   some crazy parameters
+!          IF(VesselType(Kves)==2)THEN
+!            IF(AlphaVessel1(Kves)<16.0_SP)AlphaVessel1(Kves)=16.0_SP
+!            IF(AlphaVessel2(Kves)<2.0_SP)AlphaVessel2(Kves)=2.0_SP
+!            IF(BetaVessel(Kves)<16.0_SP)BetaVessel(Kves) = 16.0_SP
+!          ENDIF
+
+         IF(VesselType(Kves)==1)THEN
+            AlphaVessel1(Kves) = Max(SMALL, AlphaVessel1(Kves))
+            BetaVessel(Kves) = Max(SMALL, BetaVessel(Kves))
+            AlphaVessel1(Kves) = Min(1.0_SP, AlphaVessel1(Kves))
+            BetaVessel(Kves) = Min(1.0_SP, BetaVessel(Kves))
+         ENDIF
+
+        ENDIF ! end pressure source
+
+        IF(SourceType(Kves)(1:2)=='SL')THEN
+         READ(Ifile,*)  LengthVessel(Kves), WidthVessel(Kves), &
+                      AlphaVessel1(Kves),AlphaVessel2(Kves), &
+                      BetaVessel(Kves),Pvessel(Kves)
+
+        ENDIF
          READ(Ifile,*)  ! t, x, y
          READ(Ifile,*)  TimeVessel2(Kves),Xvessel2(Kves),Yvessel2(Kves)
 
@@ -245,26 +352,27 @@ SUBROUTINE VESSEL_INITIAL
          Xvessel1(Kves) = Xvessel2(Kves)
          Yvessel1(Kves) = Yvessel2(Kves)
 
-         AlphaVessel(Kves) = Max(SMALL, AlphaVessel(Kves))
-         BetaVessel(Kves) = Max(SMALL, BetaVessel(Kves))
-         AlphaVessel(Kves) = Min(1.0_SP, AlphaVessel(Kves))
-         BetaVessel(Kves) = Min(1.0_SP, BetaVessel(Kves))
 
 # if defined (PARALLEL)
    IF(MYID==0)THEN
-   WRITE(3,*) 'Vessel Name: ',  TRIM(VesselName)
+   WRITE(3,*) '----- Vessel Name : ',  TRIM(VesselName)
+   WRITE(3,*) 'Vessel Source Type: ',  TRIM(SourceType(Kves))
+   WRITE(3,*) 'Vessel Type: ',  VesselType(Kves)
    WRITE(3,*) 'Vessel Length', LengthVessel(Kves)
    WRITE(3,*) 'Vessel Width', WidthVessel(Kves)
-   WRITE(3,*) 'Vessel Alpha', AlphaVessel(Kves)
+   WRITE(3,*) 'Vessel Alpha_1', AlphaVessel1(Kves)
+   WRITE(3,*) 'Vessel Alpha_2', AlphaVessel2(Kves)
    WRITE(3,*) 'Vessel Beta', BetaVessel(Kves)
    WRITE(3,*) 'Vessel P', PVessel(Kves)
    WRITE(3,*) 'Initial Time, X, Y', TimeVessel2(Kves),Xvessel2(Kves),Yvessel2(Kves)
    ENDIF
 # else
-   WRITE(3,*) 'Vessel Name: ',  TRIM(VesselName)
+   WRITE(3,*) 'Vessel Source Type: ',  TRIM(SourceType(Kves))
+   WRITE(3,*) 'Vessel Type: ',  VesselType(Kves)
    WRITE(3,*) 'Vessel Length', LengthVessel(Kves)
    WRITE(3,*) 'Vessel Width', WidthVessel(Kves)
-   WRITE(3,*) 'Vessel Alpha', AlphaVessel(Kves)
+   WRITE(3,*) 'Vessel Alpha_1', AlphaVessel1(Kves)
+   WRITE(3,*) 'Vessel Alpha_2', AlphaVessel2(Kves)
    WRITE(3,*) 'Vessel Beta', BetaVessel(Kves)
    WRITE(3,*) 'Vessel P', PVessel(Kves)
    WRITE(3,*) 'Initial Time, X, Y', TimeVessel2(Kves),Xvessel2(Kves),Yvessel2(Kves)
@@ -275,17 +383,15 @@ SUBROUTINE VESSEL_INITIAL
 End SUBROUTINE VESSEL_INITIAL
 
 SUBROUTINE VESSEL_FORCING
-  USE GLOBAL,ONLY : Mloc,Nloc,tmp1,tmp2,SMALL,TIME,ZERO
+  USE GLOBAL,ONLY : Mloc,Nloc,tmp1,tmp2,SMALL,TIME,ZERO,DT
   USE INPUT_READ
   IMPLICIT NONE
   INTEGER :: Ifile,ierr,I,J
-  REAL(SP) :: Xves,Yves,Lves,Wves,Px,Py,DetaX,DetaY
 
-# if defined (VESSEL_PANEL_SOURCE)
+
   VesselFluxGradient = ZERO
-# else
+
   VesselPressureTotal = ZERO
-# endif
 
   DO Kves = 1,NumVessel
 
@@ -297,7 +403,10 @@ SUBROUTINE VESSEL_FORCING
 
     Ifile = 200 + Kves
 
-    READ(Ifile,*,END=120)  TimeVessel2(Kves),Xvessel2(Kves),Yvessel2(Kves)
+! I add while to avoid dt is smaller than the time interval of vessel path 08/05/2019
+    DO WHILE (TimeVessel2(Kves).LT.TIME+DT)
+      READ(Ifile,*,END=120)  TimeVessel2(Kves),Xvessel2(Kves),Yvessel2(Kves)
+    END DO
 
 # if defined (PARALLEL)
    IF(MYID==0)THEN
@@ -313,12 +422,12 @@ SUBROUTINE VESSEL_FORCING
                               Xvessel2(Kves)-Xvessel1(Kves))
 
 
-# if defined (VESSEL_PANEL_SOURCE)
+! for panel source
     IF((TimeVessel2(Kves)-TimeVessel1(Kves))> ZERO)THEN
      Uvel(Kves) = (Xvessel2(Kves)-Xvessel1(Kves))/(TimeVessel2(Kves)-TimeVessel1(Kves))
      Vvel(Kves) = (Yvessel2(Kves)-Yvessel1(Kves))/(TimeVessel2(Kves)-TimeVessel1(Kves))
     ENDIF
-# endif
+! end panel source
 
     ENDIF ! end time > timevessel2
 
@@ -334,19 +443,112 @@ SUBROUTINE VESSEL_FORCING
       ELSE
       tmp2=(TimeVessel2(Kves)-TIME) &
             /MAX(SMALL, ABS(TimeVessel2(Kves)-TimeVessel1(Kves)))
-      tmp1=1.0_SP - tmp2;
+      tmp1=1.0_SP - tmp2
       ENDIF  ! no more data?
     ENDIF ! time>time_1
 
     Xves = Xvessel2(Kves)*tmp1 +Xvessel1(Kves)*tmp2
     Yves = Yvessel2(Kves)*tmp1 +Yvessel1(Kves)*tmp2
 
-# if defined (VESSEL_PANEL_SOURCE)
 
-     CALL GREEN_FUNCTION_SOURCE (Xves,Yves)
-
-# else  
+   IF(SourceType(Kves)(1:2)=='PR') THEN
    ! pressure source
+
+     CALL PRESSURE_SOURCE (Xves,Yves)
+    VesselPressureTotal = VesselPressureTotal+VesselPressureEach
+
+   ENDIF
+
+   IF(SourceType(Kves)(1:2)=='SL') THEN
+   
+     CALL SLENDER_BODY_SOURCE (Xves,Yves)
+     VesselFluxGradient = VesselFluxGradient + VesselFluxGradientEach
+
+   ENDIF
+
+   IF(SourceType(Kves)(1:2)=='PA') THEN
+   
+     CALL GREEN_FUNCTION_SOURCE (Xves,Yves)
+     VesselFluxGradient = VesselFluxGradient + VesselFluxGradientEach
+
+   ENDIF   
+
+
+120 CONTINUE  ! no more data for vessel Kves
+
+
+  ENDDO  ! end Kves
+
+! sourceX and sourceY
+
+
+!   IF(SourceType(Kves)(1:2)=='PR') THEN   
+
+# if defined (DEEP_DRAFT_VESSEL)
+    CdVessel_2D = ZERO
+    VisVessel_2D = ZERO
+    MaskVessel = 1
+# endif
+
+    DO J=Jbeg,Jend
+    DO I=Ibeg,Iend
+
+!   I modified the term to negative 11/22/2016 fyshi
+
+       VesselPressureX(I,J) = -Grav*H(I,J)*  &
+               (VesselPressureTotal(I+1,J)-VesselPressureTotal(I-1,J))/2.0_SP  &
+               /DX
+       VesselPressureY(I,J) = -Grav*H(I,J)*  &
+               (VesselPressureTotal(I,J+1)-VesselPressureTotal(I,J-1))/2.0_SP  &
+               /DY
+# if defined (DEEP_DRAFT_VESSEL)
+! use mask9 for SWE, in the vessel module mask9 uses 25 points rather than 9 points
+! for breakers 
+       IF(VesselPressureTotal(I,J).GT.ZERO) THEN
+         DO II=I-Nghost,I+Nghost
+         DO JJ=J-Nghost,J+Nghost
+          IF(MaskMethod) THEN
+            MaskVessel(II,JJ) = 0
+          ENDIF
+          IF(FrictionMethod) THEN
+            CdVessel_2D(II,JJ)=CdDeepDraft
+          ENDIF
+          IF(ViscosityMethod) THEN
+            VisVessel_2D(II,JJ) = VisDeepDraft
+          ENDIF
+         ENDDO
+         ENDDO
+       ENDIF
+# endif
+
+    ENDDO
+    ENDDO
+
+!  make initial draft 09/12/2018
+    IF(MakeVesselDraft)THEN
+       MakeVesselDraft = .FALSE.
+        DO J=1,Nloc
+        DO I=1,Mloc
+          IF(ABS(VesselPressureTotal(I,J)).GT.SMALL)THEN      
+            Eta(I,J) = - VesselPressureTotal(I,J)
+            ETA0(I,J) = ETA(I,J)
+          ENDIF
+        ENDDO
+        ENDDO
+    ENDIF
+!   ENDIF  ! end pressure source type 1 and 2
+
+END SUBROUTINE VESSEL_FORCING
+
+SUBROUTINE PRESSURE_SOURCE (Xves,Yves)
+  USE GLOBAL,ONLY : Mloc,Nloc,tmp1,tmp2,SMALL,TIME,ZERO, H,U,V,  &
+                    DX,DY,Ibeg,Iend,Jbeg,Jend,DEPTH
+  IMPLICIT NONE
+  INTEGER :: ierr,I,J
+  REAL(SP) :: Xves,Yves,Lves,Wves
+#if defined (PARALLEL)
+    REAL(SP) :: myvar
+# endif  
 
 ! rectangular
     VesselPressureEach = ZERO
@@ -356,55 +558,71 @@ SUBROUTINE VESSEL_FORCING
     ResNegX(Kves) = ZERO
     ResPosY(Kves) = ZERO
     ResNegY(Kves) = ZERO
+
     DO J=1,Nloc
     DO I=1,Mloc
       Lves=(Xco(I)-Xves)*COS(ThetaVessel(Kves)) + (Yco(J)-Yves)*SIN(ThetaVessel(Kves))
       Wves=-(Xco(I)-Xves)*SIN(ThetaVessel(Kves)) + (Yco(J)-Yves)*COS(ThetaVessel(Kves))
-# if defined (TORSVIK)
-      
-      IF(ABS(Lves)<=0.5_SP*LengthVessel(Kves).AND. &
-         ABS(Wves)<=0.5_SP*WidthVessel(Kves)) THEN
-         VesselPressureEach(I,J) = Pvessel(Kves)  &
-                  *COS(PI*Lves/(LengthVessel(Kves)))**2 &
-                  *COS(PI*Wves/(WidthVessel(Kves)))**2                  
-      ENDIF
-# else
+
    ! Ertekin et al. JFM 1986
 
     IF(ABS(Lves)<=0.5_SP*LengthVessel(Kves).AND. &
          ABS(Wves)<=0.5_SP*WidthVessel(Kves)) THEN
 
-      Px = ZERO
-      Py = ZERO
 
-      IF(ABS(Lves)>0.5_SP*LengthVessel(Kves)*AlphaVessel(Kves).AND. &
-         ABS(Lves)<0.5_SP*LengthVessel(Kves))THEN
+     IF(VesselType(Kves) == 1) THEN
+      P_x = ZERO
+      P_y = ZERO
+
+      IF(Lves>0.5_SP*LengthVessel(Kves)*AlphaVessel1(Kves).AND. &
+         Lves<0.5_SP*LengthVessel(Kves))THEN
           
-          Px = COS(PI*(Lves-0.5_SP*AlphaVessel(Kves)*LengthVessel(Kves))  &
-                   /((1.0_SP-AlphaVessel(Kves))*LengthVessel(Kves)))**2
-      ELSEIF(ABS(Lves)<=0.5_SP*LengthVessel(Kves)*AlphaVessel(Kves))THEN
-          Px = 1.0_SP
+          P_x = COS(PI*(Lves-0.5_SP*AlphaVessel1(Kves)*LengthVessel(Kves))  &
+                   /((1.0_SP-AlphaVessel1(Kves))*LengthVessel(Kves)))**2
+      ELSEIF(Lves<-0.5_SP*LengthVessel(Kves)*AlphaVessel2(Kves).AND. &
+         Lves>-0.5_SP*LengthVessel(Kves))THEN
+          P_x = COS(PI*(ABS(Lves)-0.5_SP*AlphaVessel2(Kves)*LengthVessel(Kves))  &
+                   /((1.0_SP-AlphaVessel2(Kves))*LengthVessel(Kves)))**2
+
+      ELSEIF(Lves<=0.5_SP*LengthVessel(Kves)*AlphaVessel1(Kves).AND. &
+         Lves>=-0.5_SP*LengthVessel(Kves)*AlphaVessel2(Kves))THEN
+          P_x = 1.0_SP
       ENDIF
+
       IF(ABS(Wves)>0.5_SP*WidthVessel(Kves)*BetaVessel(Kves).AND. &
          ABS(Wves)<0.5_SP*WidthVessel(Kves)) THEN
-          Py = COS(PI*(Wves-0.5_SP*BetaVessel(Kves)*WidthVessel(Kves))  &
+          P_y = COS(PI*(ABS(Wves)-0.5_SP*BetaVessel(Kves)*WidthVessel(Kves))  &
                   /((1.0_SP-BetaVessel(Kves))*WidthVessel(Kves)))**2
       ELSEIF(ABS(Wves)<=0.5_SP*WidthVessel(Kves)*BetaVessel(Kves)) THEN
-          Py = 1.0_SP
+          P_y = 1.0_SP
       ENDIF
 
-         VesselPressureEach(I,J) = Pvessel(Kves)*Px*Py
+         VesselPressureEach(I,J) = Pvessel(Kves)*P_x*P_y
+     ENDIF  ! type 1
+
+     IF(VesselType(Kves) == 2) THEN
+
+        VesselPressureEach(I,J) = Pvessel(Kves)*  &
+              (1.0_SP - AlphaVessel1(Kves)*(Lves/LengthVessel(Kves))**4)* &
+              (1.0_SP - AlphaVessel2(Kves)*(Wves/WidthVessel(Kves))**2)* &
+              EXP(-BetaVessel(Kves)*(Wves/WidthVessel(Kves))**2)
+
+     ENDIF ! end type 2     
+
+    ENDIF  ! end inside ship rectangule
+     
+    ENDDO
+    ENDDO  ! end grid
+
+! calculate resistance. In the initial code, the resistance was calculated
+! inside the last loop. It turns out that resistance was re-counted 
+! because of including ghost cells (thanks to Jeff Harris)    
+
+    DO J=Jbeg,Jend
+    DO I=Ibeg,Iend
 
          DetaX = (ETA(I+1,J)-ETA(I-1,J))/2.0_SP
          DetaY = (ETA(I,J+1)-ETA(I,J-1))/2.0_SP
-
-!         ResistanceX(Kves)=ResistanceX(Kves)  &
-!                 +VesselPressureEach(I,J)*RHO_WATER*GRAV  &
-!                  *DetaX*DY
-
-!         ResistanceY(Kves)=ResistanceY(Kves)  &
-!                 +VesselPressureEach(I,J)*RHO_WATER*GRAV  &
-!                  *DetaY*DX
 
          IF(DetaX>=0)THEN
            ResPosX(Kves) = ResPosX(Kves) &
@@ -428,23 +646,10 @@ SUBROUTINE VESSEL_FORCING
 
          ResistanceX(Kves) = ResPosX(Kves) + ResNegX(Kves)
          ResistanceY(Kves) = ResPosY(Kves) + ResNegY(Kves)
-
-    ENDIF  ! end inside ship rectangule
-
-# endif
-     
+      
     ENDDO
-    ENDDO  ! end grid
+    ENDDO
 
-# endif
-  ! end difference sources
-
-120 CONTINUE  ! no more data for vessel Kves
-
-
-# if defined (VESSEL_PANEL_SOURCE)
-     VesselFluxGradient = VesselFluxGradient + VesselFluxGradientEach
-# else
   ! pressure source
 
 # if defined (PARALLEL)
@@ -452,44 +657,19 @@ SUBROUTINE VESSEL_FORCING
      ResistanceX(Kves) = myvar
      call MPI_ALLREDUCE(ResistanceY(Kves),myvar,1,MPI_SP,MPI_SUM,MPI_COMM_WORLD,ier)
      ResistanceY(Kves) = myvar
+     call MPI_ALLREDUCE(ResPosX(Kves),myvar,1,MPI_SP,MPI_SUM,MPI_COMM_WORLD,ier)
+     ResPosX(Kves) = myvar
+     call MPI_ALLREDUCE(ResPosY(Kves),myvar,1,MPI_SP,MPI_SUM,MPI_COMM_WORLD,ier)
+     ResPosY(Kves) = myvar
+     call MPI_ALLREDUCE(ResNegX(Kves),myvar,1,MPI_SP,MPI_SUM,MPI_COMM_WORLD,ier)
+     ResNegX(Kves) = myvar
+     call MPI_ALLREDUCE(ResNegY(Kves),myvar,1,MPI_SP,MPI_SUM,MPI_COMM_WORLD,ier)
+     ResNegY(Kves) = myvar
 # endif
 
-    VesselPressureTotal = VesselPressureTotal+VesselPressureEach
 
-# endif
-  ! end different sources
+END SUBROUTINE PRESSURE_SOURCE
 
-  ENDDO  ! end Kves
-
-! sourceX and sourceY
-
-
-# if defined (VESSEL_PANEL_SOURCE)
-   ! do nothing about pressure gradient for panel source
-# else
-    DO J=Jbeg,Jend
-    DO I=Ibeg,Iend
-
-!   I modified the term to negative 11/22/2016 fyshi
-
-       VesselPressureX(I,J) = -Grav*H(I,J)*  &
-               (VesselPressureTotal(I+1,J)-VesselPressureTotal(I-1,J))/2.0_SP  &
-               /DX
-       VesselPressureY(I,J) = -Grav*H(I,J)*  &
-               (VesselPressureTotal(I,J+1)-VesselPressureTotal(I,J-1))/2.0_SP  &
-               /DY
-
-    ENDDO
-    ENDDO
-
-# endif
-  ! end panel or pressure sources
-
-
-
-END SUBROUTINE VESSEL_FORCING
-
-# if defined (VESSEL_PANEL_SOURCE)
 SUBROUTINE GREEN_FUNCTION_SOURCE (Xves,Yves)
   USE GLOBAL,ONLY : Mloc,Nloc,tmp1,tmp2,SMALL,TIME,ZERO, H,U,V,  &
                     DX,DY,Ibeg,Iend,Jbeg,Jend,DEPTH
@@ -577,6 +757,69 @@ SUBROUTINE GREEN_FUNCTION_SOURCE (Xves,Yves)
 # endif
   !  end realistic vessel body, otherwise slender
 
+END SUBROUTINE GREEN_FUNCTION_SOURCE
+
+
+SUBROUTINE SLENDER_BODY_SOURCE (Xves,Yves)
+  USE GLOBAL,ONLY : Mloc,Nloc,tmp1,tmp2,SMALL,TIME,ZERO, H,U,V,  &
+                    DX,DY,Ibeg,Iend,Jbeg,Jend,DEPTH
+  IMPLICIT NONE
+  INTEGER :: ierr,I,J
+  REAL(SP) :: Xves,Yves,Lves,Wves
+  REAL(SP) :: x_right_1, x_right_2, x_left_1, x_left_2
+
+
+  VesselFluxGradientEach = ZERO
+
+! initial parabolic function by Tanimoto et al. 2000
+  
+    DO J=1,Nloc
+    DO I=1,Mloc
+      Lves=(Xco(I)-Xves)*COS(ThetaVessel(Kves)) + (Yco(J)-Yves)*SIN(ThetaVessel(Kves))
+      Wves=-(Xco(I)-Xves)*SIN(ThetaVessel(Kves)) + (Yco(J)-Yves)*COS(ThetaVessel(Kves))
+
+      
+      IF(ABS(Lves)<=0.5_SP*LengthVessel(Kves).AND. &
+         ABS(Wves)<=0.5_SP*WidthVessel(Kves)) THEN
+
+        IF(VesselType(kves)==1)THEN
+         VesselFluxGradientEach(I,J) = Pvessel(Kves)  &
+                  *SIN(2.0*PI*Lves/(LengthVessel(Kves))) &
+                  *COS(PI*Wves/(WidthVessel(Kves)))**2   
+        ENDIF  ! type 1
+
+        IF(VesselType(kves)==2)THEN
+         
+         x_right_1=0.5_SP*LengthVessel(Kves)*AlphaVessel1(Kves)
+         x_right_2=0.5_SP*LengthVessel(Kves)
+         x_left_1=-0.5_SP*LengthVessel(Kves)*AlphaVessel2(Kves)
+         x_left_2=-0.5_SP*LengthVessel(Kves)
+
+         IF(Lves>x_right_1.AND. &
+            Lves<x_right_2)THEN
+          
+          VesselFluxGradientEach(I,J) = Pvessel(Kves)  &
+                  *SIN(PI*(Lves-x_right_1)/(x_right_2-x_right_1)) &
+                  *COS(PI*Wves/(WidthVessel(Kves)))**2 
+
+         ELSEIF(Lves<x_left_1.AND. &
+            Lves>x_left_2)THEN
+          VesselFluxGradientEach(I,J) = Pvessel(Kves)  &
+                  *SIN(PI*(Lves-x_left_1)/(x_left_1-x_left_2)) &
+                  *COS(PI*Wves/(WidthVessel(Kves)))**2 
+
+         ELSEIF(Lves<=x_right_1.AND. &
+            Lves>=x_left_1)THEN
+          VesselFluxGradientEach(I,J) = ZERO
+         ENDIF
+
+        ENDIF  ! type 2
+
+      ENDIF
+    ENDDO
+    ENDDO
+
+
 !open(99,file='tmp.txt')
 !do j=1,Nloc
 ! write(99,108)(VesselFluxGradientEach(i,j),i=1,Mloc)
@@ -585,10 +828,7 @@ SUBROUTINE GREEN_FUNCTION_SOURCE (Xves,Yves)
 !108 format(5000E12.3)
 !stop
 
-END SUBROUTINE GREEN_FUNCTION_SOURCE
-# endif 
-  ! end panel source
-
+END SUBROUTINE SLENDER_BODY_SOURCE
 
 END MODULE VESSEL_MODULE
 

@@ -75,6 +75,7 @@ MODULE GLOBAL
        INTEGER :: NumberStations
        INTEGER,DIMENSION(:),ALLOCATABLE :: ista,jsta,nsta
        REAL(SP):: PLOT_INTV_STATION,PLOT_COUNT_STATION
+       INTEGER :: StationOutputBuffer
 
 ! timer
        REAL(SP) :: tbegin,tend
@@ -85,6 +86,9 @@ MODULE GLOBAL
 # endif
 
 ! define parameters
+
+       ! [mayhl] Added global input file name for modules
+       CHARACTER(LEN=80) INPUT_FILE_NAME
        CHARACTER(LEN=80) TITLE
        CHARACTER(LEN=80) ReadType
        CHARACTER(LEN=80) DEPTH_TYPE
@@ -113,7 +117,7 @@ MODULE GLOBAL
        LOGICAL :: NO_MASK_FILE = .TRUE.
        LOGICAL :: NO_UV_FILE = .TRUE.
 
-        CHARACTER(LEN=14)::FORMAT_LEN=' '
+        CHARACTER(LEN=16)::FORMAT_LEN=' '
 
 
        REAL(SP),PARAMETER,DIMENSION(3)::alpha=(/0.0_SP,3.0_SP/4.0_SP,1.0_SP/3.0_SP/)
@@ -132,15 +136,16 @@ MODULE GLOBAL
 # endif
        REAL(SP)::  DT,TIME,TOTAL_TIME,PLOT_INTV,PLOT_COUNT,&
                   SCREEN_INTV,SCREEN_COUNT, &
-                   DT_fixed
+                   DT_fixed,PLOT_START_TIME
        REAL(SP) :: HOTSTART_INTV,HOTSTART_COUNT
-       INTEGER :: icount=0  ! for output file number
+       INTEGER :: icount=-1  ! for output file number
        INTEGER :: icount_mean=0  ! for output mean file number
        INTEGER :: icount_hotstart=0
        INTEGER :: FileNumber_HOTSTART
        
        REAL(SP) :: MinDepth=0.001
        REAL(SP) :: MinDepthFrc=0.5
+       REAL(SP) :: ArrTimeMin=0.001
        REAL(SP) :: CFL=0.15_SP
        REAL(SP) :: FroudeCap=10.0_SP
        REAL(SP) :: SWE_ETA_DEP=0.7_SP
@@ -150,7 +155,10 @@ MODULE GLOBAL
 
        REAL(SP),DIMENSION(:,:),ALLOCATABLE :: &
                 BreakWaterWidth,CD_breakwater
+       REAL(SP) :: BreakWaterAbsorbCoef
 
+! coordinates for Cartesian only
+      REAL(SP),DIMENSION(:),ALLOCATABLE ::  Xco,Yco
 
 ! switch for dispersion
 !   gamma1 is for extra M term
@@ -215,7 +223,7 @@ MODULE GLOBAL
           Fx,Fy,U,V,HU,HV,&
           Gx,Gy,P,Q,SourceX,SourceY,Int2Flo, &
           tmp4preview,HeightMax,HeightMin,VelocityMax,&
-          MomentumFluxMax,VorticityMax
+          MomentumFluxMax,VorticityMax,ARRTIME
 # if defined (ITERATION)
        REAL(SP),DIMENSION(:,:),ALLOCATABLE :: Ui,Vi,ETAi,&
                         UbarOld,VbarOld,EtaOld
@@ -225,12 +233,19 @@ MODULE GLOBAL
 ! 
 ! wetting and drying
         INTEGER,DIMENSION(:,:),ALLOCATABLE :: MASK,MASK_STRUC,MASK9
+        REAL(SP) :: Dmass,WetArea,DwetEta
+# if defined(UseEtaScreen)
+        REAL(SP),DIMENSION(:,:),ALLOCATABLE :: EtaScreen
+# endif
 ! wave maker
         LOGICAL :: EqualEnergy = .FALSE.
+        LOGICAL :: WaveMakerCurrentBalance = .FALSE.
+        REAL(SP) :: WaveMakerCd
         REAL(SP)::AMP_SOLI,DEP_SOLI,LAG_SOLI, CPH_SOLI,XWAVEMAKER, &
                   Xc,Yc, WID,Xc_WK,Tperiod,AMP_WK,DEP_WK,Theta_WK, &
                   rlamda,Time_ramp,D_gen,Beta_gen,Width_WK,Delta_WK,&
                   Ywidth_WK,Yc_WK
+        LOGICAL :: SolitaryPositiveDirection = .TRUE.
         REAL(SP),DIMENSION(:,:),ALLOCATABLE :: D_gen_ir,rlamda_ir,phase_ir
         REAL(SP),DIMENSION(:),ALLOCATABLE :: Beta_gen_ir,omgn_ir
         REAL(SP),DIMENSION(:),ALLOCATABLE :: omgn2D
@@ -264,6 +279,8 @@ MODULE GLOBAL
         REAL(SP):: veg_cd,veg_n,veg_bv
 
 
+        LOGICAL :: ROLLER=.FALSE.
+        REAL(SP) :: ROLLER_SWITCH 
 
 ! sponge
         REAL(SP),DIMENSION(:,:),ALLOCATABLE :: SPONGE,SpongeMaker
@@ -327,6 +344,9 @@ MODULE GLOBAL
 ! output logical parameters
        INTEGER :: OUTPUT_RES = 1
        LOGICAL :: OUT_U=.FALSE., OUT_V=.FALSE.,OUT_ETA=.FALSE., &
+# if defined(UseEtaScreen)
+                  OUT_ETASCREEN=.FALSE., &
+# endif
                   OUT_MASK=.FALSE.,OUT_SXL=.FALSE.,OUT_SXR=.FALSE.,&
                   OUT_SYL=.FALSE., OUT_SYR=.FALSE.,&
                   OUT_SourceX=.FALSE., OUT_SourceY=.FALSE., &
@@ -339,12 +359,14 @@ MODULE GLOBAL
                   OUT_Hmin=.FALSE., &
                   OUT_Umax=.FALSE.
        LOGICAL :: OUT_MFmax=.FALSE., &
-                  OUT_VORmax=.FALSE.
+                  OUT_VORmax=.FALSE.,OUT_Time, &
+                  OUT_ROLLER = .FALSE., &
+                  OUT_UNDERTOW = .FALSE.
 
        LOGICAL :: OUT_Umean=.FALSE.,OUT_Vmean=.FALSE.,&
                   OUT_ETAmean=.FALSE.,&
                   OUT_WaveHeight = .FALSE.,&
-	            OUT_WaveHeightSig = .FALSE.    !ykchoi
+	          OUT_WaveHeightSig = .FALSE.    !ykchoi
 	 
 
 
@@ -368,9 +390,9 @@ MODULE GLOBAL
        REAL(SP) :: Dep_Ser,WidthWaveMaker,&
                    R_sponge_wavemaker,A_sponge_wavemaker
 
-       REAL(SP),DIMENSION(:,:),ALLOCATABLE :: Amp_Ser
-       REAL(SP),DIMENSION(:),ALLOCATABLE :: Per_Ser,&
-                                            Phase_Ser,Theta_Ser
+       REAL(SP),DIMENSION(:,:),ALLOCATABLE :: Amp_Ser,Phase_LEFT
+       REAL(SP),DIMENSION(:),ALLOCATABLE :: Per_Ser,Phase_Ser,&
+                                            Theta_Ser
        REAL(SP),DIMENSION(:),ALLOCATABLE :: Segma_Ser,Wave_Number_Ser
        REAL(SP) :: Stokes_Drift_Ser
        REAL(SP),DIMENSION(:,:,:),ALLOCATABLE ::Cm_eta,Sm_eta, &
@@ -380,9 +402,11 @@ MODULE GLOBAL
 
 ! eddy viscosity breaking
         REAL(SP),DIMENSION(:,:),ALLOCATABLE :: AGE_BREAKING
+        REAL(SP),DIMENSION(:,:),ALLOCATABLE :: ROLLER_FLUX,UNDERTOW_U,UNDERTOW_V
         REAL(SP) :: Cbrk1=0.65,Cbrk2=0.35,T_brk
         ! use T_brk to judge breakers
         LOGICAL :: INI_UVZ=.FALSE.
+        LOGICAL :: BED_DEFORMATION = .FALSE.
 
        REAL(SP),DIMENSION(:,:),ALLOCATABLE :: nu_break,nu_sponge
        REAL(SP) :: nu_bkg

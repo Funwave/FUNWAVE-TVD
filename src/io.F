@@ -57,6 +57,12 @@ SUBROUTINE OUTPUT
 # if defined(METEO)
      USE METEO_MODULE
 # endif
+# if defined(SEDIMENT)
+     USE SEDIMENT_MODULE
+# endif
+# if defined (TRACKING)
+     USE TRACER
+# endif
 
     IMPLICIT NONE
 
@@ -82,6 +88,8 @@ SUBROUTINE OUTPUT
       ENDIF
 ! preview
 
+      IF(TIME>=PLOT_START_TIME)THEN
+
 	PLOT_COUNT=PLOT_COUNT+DT
       IF(PLOT_COUNT>=PLOT_INTV)THEN
        PLOT_COUNT=PLOT_COUNT-PLOT_INTV
@@ -94,6 +102,22 @@ SUBROUTINE OUTPUT
        CALL OUTPUT_VESSEL
       ENDIF      
 # endif
+# if defined (SEDIMENT)
+      PLOT_COUNT_SEDIMENT=PLOT_COUNT_SEDIMENT+DT
+      IF(PLOT_COUNT_SEDIMENT>=PLOT_INTV_SEDIMENT)THEN
+       PLOT_COUNT_SEDIMENT=PLOT_COUNT_SEDIMENT-PLOT_INTV_SEDIMENT
+       CALL OUTPUT_SEDIMENT
+      ENDIF      
+# endif
+# if defined (TRACKING)
+      PLOT_COUNT_TRACKING=PLOT_COUNT_TRACKING+DT
+      IF(PLOT_COUNT_TRACKING>=PLOT_INTV_TRACKING)THEN
+       PLOT_COUNT_TRACKING=PLOT_COUNT_TRACKING-PLOT_INTV_TRACKING
+       CALL OUTPUT_TRACKING
+      ENDIF      
+# endif
+
+   ENDIF ! end plot start time
 
 
 END SUBROUTINE OUTPUT
@@ -105,6 +129,9 @@ END SUBROUTINE OUTPUT
 !  HISTORY:
 !  01/10/2011  Fengyan SHi
 !  12/23/2014  Young-Kwang Choi, added option for intel compiler
+!  07/17/2019  Zhouteng Ye, added 1. get input from command line argument
+!                                 2. input file for post-processor
+!                       
 !
 !-------------------------------------------------------------------------------------
 
@@ -123,6 +150,10 @@ SUBROUTINE READ_INPUT
     INTEGER::LINE
     INTEGER :: ierr
     INTEGER :: I_comp
+    LOGICAL :: INPUT_PHASE = .FALSE.
+
+    !>by Zhouteng Ye
+    CHARACTER(LEN=80)::INPUT_NAME=''
 
 ![ykchoi
     CHARACTER(LEN=80)::FDIR=' '
@@ -139,7 +170,18 @@ SUBROUTINE READ_INPUT
       OPEN(3,FILE='LOG.txt')   
 
 ! read everything from input.txt
-      FILE_NAME='input.txt'
+
+      !>by Zhouteng Ye
+      !> Get the argument from the command.
+      !> If no input in command, file name is 'input.txt' (same as before)
+      !> If the input comes with other name, read the correponding file
+      CALL GETARG(1,INPUT_NAME) 
+      if (INPUT_NAME .eq. '') Then
+        FILE_NAME='input.txt'
+      Else
+        FILE_NAME=INPUT_NAME
+      endif
+      INPUT_FILE_NAME=FILE_NAME
 
 ! title
       CALL READ_STRING(TITLE,FILE_NAME,'TITLE',ierr)
@@ -562,6 +604,21 @@ SUBROUTINE READ_INPUT
         STOP
       ENDIF
 
+      CALL READ_FLOAT(PLOT_START_TIME,FILE_NAME,'PLOT_START_TIME',ierr)
+
+      IF(ierr==1)THEN
+        PLOT_START_TIME = 0.0
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'PLOT_START_TIME Default:  0.0 s'
+         WRITE(3,'(A40)')'PLOT_START_TIME Default:  0.0 s'
+      endif
+# else
+         WRITE(*,'(A40)')'PLOT_START_TIME Default:  0.0 s'
+         WRITE(3,'(A40)')'PLOT_START_TIME Default:  0.0 s'
+# endif
+       ENDIF
+
       CALL READ_FLOAT(PLOT_INTV,FILE_NAME,'PLOT_INTV',ierr)
 
       IF(ierr==1)THEN
@@ -592,6 +649,19 @@ SUBROUTINE READ_INPUT
 # endif
        ENDIF
 
+      CALL READ_INTEGER(StationOutputBuffer,FILE_NAME,'StationOutputBuffer',ierr)
+      IF(ierr==1)THEN
+        StationOutputBuffer = 1000
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A80)')'StationOutputBuffer not specified, use default:1000'
+         WRITE(3,'(A80)')'StationOutputBuffer not specified, use default:1000'
+      endif
+# else
+         WRITE(*,'(A80)')'StationOutputBuffer not specified, use default:1000'
+         WRITE(3,'(A80)')'StationOutputBuffer not specified, use default:1000'
+# endif
+      ENDIF
 
       CALL READ_FLOAT(SCREEN_INTV,FILE_NAME,'SCREEN_INTV',ierr)
       IF(ierr==1)THEN
@@ -632,6 +702,24 @@ SUBROUTINE READ_INPUT
         INI_UVZ = .FALSE.
       ENDIF
     IF(INI_UVZ)THEN
+
+        CALL READ_LOGICAL(BED_DEFORMATION,FILE_NAME,'BED_DEFORMATION',ierr)
+        IF(ierr==1)THEN
+           BED_DEFORMATION = .FALSE.
+        ENDIF 
+
+        IF(BED_DEFORMATION)THEN
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A50)')'Bathymetry is adjusted based on Bed deformation.'
+         WRITE(3,'(A50)')'Bathymetry is adjusted based on Bed deformation.'
+      endif
+# else
+         WRITE(*,'(A50)')'Bathymetry is adjusted based on Bed deformation.'
+         WRITE(3,'(A50)')'Bathymetry is adjusted based on Bed deformation.'
+# endif
+        ENDIF ! end bed deformation
+
         CALL READ_STRING(ETA_FILE,FILE_NAME,'ETA_FILE',ierr)
 
       IF(ierr==1)THEN
@@ -999,6 +1087,35 @@ SUBROUTINE READ_INPUT
         ENDIF  ! end WK_TIME
 
         IF(WaveMaker(1:7)=='INI_SOL')THEN
+
+          CALL READ_LOGICAL(SolitaryPositiveDirection,FILE_NAME,  &
+               'SolitaryPositiveDirection',ierr)
+
+        IF(ierr==1)THEN
+          SolitaryPositiveDirection = .TRUE.
+        ENDIF
+
+        IF(SolitaryPositiveDirection) THEN
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A60)')'Solitary wave propagate in + X direction'
+         WRITE(3,'(A60)')'Solitary wave propagate in + X direction'
+      endif
+# else
+         WRITE(*,'(A60)')'Solitary wave propagate in + X direction'
+         WRITE(3,'(A60)')'Solitary wave propagate in + X direction'
+# endif
+        ELSE
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A60)')'Solitary wave propagate in - X direction'
+         WRITE(3,'(A60)')'Solitary wave propagate in - X direction'
+      endif
+# else
+         WRITE(*,'(A60)')'Solitary wave propagate in - X direction'
+         WRITE(3,'(A60)')'Solitary wave propagate in - X direction'
+# endif
+        ENDIF
 
           CALL READ_FLOAT(AMP_SOLI,FILE_NAME,'AMP',ierr)
       IF(ierr==1)THEN
@@ -1843,6 +1960,31 @@ SUBROUTINE READ_INPUT
 
        CALL READ_FLOAT(DEP_Ser,FILE_NAME,'DepthWaveMaker',ierr)
 
+        IF(ierr==1)THEN
+       CALL READ_FLOAT(DEP_Ser,FILE_NAME,'DEP_WK',ierr)
+
+# if defined (PARALLEL)
+      if (myid.eq.0) WRITE(3,'(A50)') 'DepthWaveMaker not defined, read DEP_WK'
+# else
+      WRITE(3,'(A50)')'DepthWaveMaker not defined, read DEP_WK'
+# endif
+      IF(ierr==1)THEN ! if can not find again
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A80)')'you should specify either DepthWaveMaker or DEP_WK,STOP'
+         WRITE(3,'(A80)')'you should specify either DepthWaveMaker or DEP_WK,STOP'
+      endif
+       call MPI_FINALIZE ( ier )
+# else
+         WRITE(*,'(A80)')'you should specify either DepthWaveMaker or DEP_WK,STOP'
+         WRITE(3,'(A80)')'you should specify either DepthWaveMaker or DEP_WK,STOP'
+# endif
+        STOP
+      ENDIF
+
+          ENDIF ! end read DepthWaveMaker
+
+
       IF(WaveMaker(1:3)=='ABS')THEN
        CALL READ_FLOAT(WidthWaveMaker,FILE_NAME,'WidthWaveMaker',ierr) 
 !  get R and A for sponge_wavemaker calculation  
@@ -1856,7 +1998,7 @@ SUBROUTINE READ_INPUT
       OPEN(1,FILE=TRIM(WaveCompFile))
        READ(1,*)NumFreq,NumDir
        ALLOCATE (Amp_Ser(NumFreq,NumDir),  &
-          Per_Ser(NumFreq),Theta_Ser(NumDir))
+          Per_Ser(NumFreq),Theta_Ser(NumDir),Phase_LEFT(NumFreq,NumDir))
        READ(1,*)PeakPeriod  ! useless for this application but should keep for consistency
        DO J=1,NumFreq
           READ(1,*)Per_Ser(J)  ! read in as frequency
@@ -1867,24 +2009,44 @@ SUBROUTINE READ_INPUT
        DO I=1,NumDir
          READ(1,*)(Amp_Ser(J,I),J=1,NumFreq)
        ENDDO
+       DO I=1,NumDir
+         READ(1,*,END=991)(Phase_LEFT(J,I),J=1,NumFreq)
+       ENDDO
      CLOSE(1)
+881  INPUT_PHASE = .TRUE.
+991  CONTINUE
 
-       ALLOCATE(  Phase_Ser(NumFreq),&
-                  Segma_Ser(NumFreq),Wave_Number_Ser(NumFreq) )
+    DO J=1,NumFreq
+     DO I=1,NumDir
+
+     IF(INPUT_PHASE)THEN
+         Phase_LEFT(J,I)=Phase_LEFT(J,I)*3.1415926/180.0_SP
+     ELSE
+# if defined (INTEL)
+          Phase_LEFT(J,I)=rand()*2.0_SP*3.1415926
+# elif defined (CRAY)
+          Phase_LEFT(J,I)=rand()*2.0_SP*3.1415926
+# else
+          Phase_LEFT(J,I)=rand(0)*2.0_SP*3.1415926
+# endif
+     ENDIF
+
+    ENDDO
+   ENDDO
+
+! to make consistent with cm and sm approach we use phase_ser which is 
+! only is random with frequency
+       ALLOCATE(Phase_Ser(NumFreq))
+
+       ALLOCATE(Segma_Ser(NumFreq),Wave_Number_Ser(NumFreq) )
        DO J=1,NumFreq
+          Phase_Ser(J)=Phase_LEFT(J,1)
           IF(Per_Ser(J).EQ.ZERO)THEN
           WRITE(*,*) 'wave frequency is zero, STOP'
           STOP
          ELSE
           Per_Ser(J)=1.0_SP/Per_Ser(J)
          ENDIF
-# if defined (INTEL)
-          Phase_Ser(J)=rand()*2.0_SP*3.1415926
-# elif defined (CRAY)
-          Phase_Ser(J)=rand()*2.0_SP*3.1415926
-# else
-          Phase_Ser(J)=rand(0)*2.0_SP*3.1415926
-# endif
        ENDDO
        DO I=1,NumDir
          Theta_Ser(I)=Theta_Ser(I)*DEG2RAD
@@ -2279,6 +2441,27 @@ SUBROUTINE READ_INPUT
 # endif
        ENDIF ! endif sponge
 
+! to avoid longshore current caused by extra momentum flux
+! we can add bottom friction make momentum balance
+
+      CALL READ_FLOAT(WaveMakerCd,FILE_NAME,'WaveMakerCd',ierr)
+      IF(ierr==1)THEN
+        WaveMakerCurrentBalance=.FALSE.
+# if defined (PARALLEL)
+      if (myid.eq.0) WRITE(3,'(A40)')'No WavemakerCurrentBalance'
+# else
+       WRITE(3,'(A40)')'No WavemakerCurrentBalance'
+# endif
+      ELSE
+        WaveMakerCurrentBalance=.TRUE.
+# if defined (PARALLEL)
+      if (myid.eq.0) WRITE(3,'(A15,F6.2)')'WaveMakerCd:', WaveMakerCd
+# else
+      WRITE(3,'(A15,F6.2)')'WaveMakerCd:', WaveMakerCd
+# endif
+      ENDIF
+
+
 # if defined (PARALLEL)
       if (myid.eq.0) WRITE(3,*)'                                         '
       if (myid.eq.0) WRITE(3,*)'-------- OBSTACLE and BREAKWATER -----------------'
@@ -2322,6 +2505,33 @@ SUBROUTINE READ_INPUT
       WRITE(3,'(A20,A50)')'BREAKWATER_FILE:', BREAKWATER_FILE
 # endif
       ENDIF
+
+! breakwater reflection stength
+
+          CALL READ_FLOAT(BreakWaterAbsorbCoef,FILE_NAME,'BreakWaterAbsorbCoef',ierr)
+      IF(ierr==1)THEN
+        BreakWaterAbsorbCoef = 10.0_SP
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'BreakWaterAbsorbCoef Default:  10.0'
+         WRITE(3,'(A40)')'BreakWaterAbsorbCoef Default:  10.0'
+      endif
+# else
+         WRITE(*,'(A40)')'BreakWaterAbsorbCoef Default:  10.0'
+         WRITE(3,'(A40)')'BreakWaterAbsorbCoef Default:  10.0'
+# endif
+       ELSE
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40,F6.2)')'BreakWaterAbsorbCoef:', BreakWaterAbsorbCoef
+         WRITE(3,'(A40,F6.2)')'BreakWaterAbsorbCoef:', BreakWaterAbsorbCoef
+      endif
+# else
+         WRITE(*,'(A40,F6.2)')'BreakWaterAbsorbCoef:', BreakWaterAbsorbCoef
+         WRITE(3,'(A40,F6.2)')'BreakWaterAbsorbCoef:', BreakWaterAbsorbCoef
+# endif
+       ENDIF
+
 
 # if defined (PARALLEL)
       if (myid.eq.0) WRITE(3,*)'                                         '
@@ -2393,15 +2603,15 @@ SUBROUTINE READ_INPUT
 # if defined (ZALPHA)
           CALL READ_FLOAT(Beta_ref,FILE_NAME,'Beta_ref',ierr)
       IF(ierr==1)THEN
-        Beta_ref = 0.531_SP
+        Beta_ref = -0.531_SP
 # if defined (PARALLEL)
       if (myid.eq.0) THEN
-         WRITE(*,'(A40)')'Beta_ref Default:  0.531'
-         WRITE(3,'(A40)')'Beta_ref Default:  0.531'
+         WRITE(*,'(A40)')'Beta_ref Default:  -0.531'
+         WRITE(3,'(A40)')'Beta_ref Default:  -0.531'
       endif
 # else
-         WRITE(*,'(A40)')'Beta_ref Default:  0.531'
-         WRITE(3,'(A40)')'Beta_ref Default:  0.531'
+         WRITE(*,'(A40)')'Beta_ref Default:  -0.531'
+         WRITE(3,'(A40)')'Beta_ref Default:  -0.531'
 # endif
        ENDIF
 # endif
@@ -2446,17 +2656,19 @@ SUBROUTINE READ_INPUT
 
       CALL READ_LOGICAL(VISCOSITY_BREAKING,FILE_NAME,'VISCOSITY_BREAKING',ierr)
       IF(ierr==1)THEN
-        VISCOSITY_BREAKING = .FALSE.
+        VISCOSITY_BREAKING = .TRUE.
 # if defined (PARALLEL)
       if (myid.eq.0) THEN
-         WRITE(*,'(A60)')'VISCOSITY_BREAKING Default:  SWE Breaking'
-         WRITE(3,'(A60)')'VISCOSITY_BREAKING Default:  SWE Breaking'
+         WRITE(*,'(A60)')'VISCOSITY_BREAKING Default:  VIS Breaking'
+         WRITE(3,'(A60)')'VISCOSITY_BREAKING Default:  VIS Breaking'
       endif
 # else
-         WRITE(*,'(A60)')'VISCOSITY_BREAKING Default:  SWE Breaking'
-         WRITE(3,'(A60)')'VISCOSITY_BREAKING Default:  SWE Breaking'
+         WRITE(*,'(A60)')'VISCOSITY_BREAKING Default:  VIS Breaking'
+         WRITE(3,'(A60)')'VISCOSITY_BREAKING Default:  VIS Breaking'
 # endif
        ENDIF
+
+      IF(ROLLER) VISCOSITY_BREAKING = .TRUE.
 
       IF(VISCOSITY_BREAKING)THEN
 # if defined (PARALLEL)
@@ -2498,6 +2710,7 @@ SUBROUTINE READ_INPUT
         CALL READ_STRING(VEG_FILE,FILE_NAME,'Veg_File',ierr) 
       endif
       CALL READ_LOGICAL(IN_Cd,FILE_NAME,'Friction_Matrix',ierr)
+      CALL READ_LOGICAL(IN_Cd,FILE_NAME,'FRICTION_MATRIX',ierr)
       IF(ierr==1)THEN
         IN_Cd = .FALSE.
 # if defined (PARALLEL)
@@ -2512,17 +2725,17 @@ SUBROUTINE READ_INPUT
        ENDIF
 
     IF(IN_Cd)THEN
-        CALL READ_STRING(CD_FILE,FILE_NAME,'Cd_file',ierr) 
+        CALL READ_STRING(CD_FILE,FILE_NAME,'FRICTION_FILE',ierr) 
       IF(ierr==1)THEN
 # if defined (PARALLEL)
       if (myid.eq.0) THEN
-         WRITE(*,'(A80)')'Cd_file NOT FOUND, Please specify Cd_file in input.txt'
-         WRITE(3,'(A80)')'Cd_file NOT FOUND, Please specify Cd_file in input.txt'
+         WRITE(*,'(A80)')'FRICTION_FILE NOT FOUND, Please specify Cd_file in input.txt'
+         WRITE(3,'(A80)')'FRICTION_FILE NOT FOUND, Please specify Cd_file in input.txt'
       endif
        call MPI_FINALIZE ( ier )
 # else
-         WRITE(*,'(A80)')'Cd_file NOT FOUND, Please specify Cd_file in input.txt'
-         WRITE(3,'(A80)')'Cd_file NOT FOUND, Please specify Cd_file in input.txt'
+         WRITE(*,'(A80)')'FRICTION_FILE NOT FOUND, Please specify Cd_file in input.txt'
+         WRITE(3,'(A80)')'FRICTION_FILE NOT FOUND, Please specify Cd_file in input.txt'
 # endif
         STOP
       ELSE
@@ -2544,9 +2757,13 @@ SUBROUTINE READ_INPUT
             WRITE(*,'(A40)')'Cd_fixed Default:  0.0'
             WRITE(3,'(A40)')'Cd_fixed Default:  0.0'
          endif
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'Cd_fixed Default:  0.0, possibly you used FRICTION_MATRIX'
+         WRITE(3,'(A40)')'Cd_fixed Default:  0.0, possibly you used FRICTION_MATRIX'
+      endif
 # else
-         WRITE(*,'(A40)')'Cd_fixed Default:  0.0'
-         WRITE(3,'(A40)')'Cd_fixed Default:  0.0'
+         WRITE(*,'(A40)')'Cd_fixed Default:  0.0, possibly you used FRICTION_MATRIX'
+         WRITE(3,'(A40)')'Cd_fixed Default:  0.0, possibly you used FRICTION_MATRIX'
 # endif
       ENDIF
 
@@ -2594,9 +2811,9 @@ SUBROUTINE READ_INPUT
       ENDIF
      
 # if defined (PARALLEL)
-       if (myid.eq.0) WRITE(3,'(A13,F12.2)')'Cd_fixed         =', Cd_fixed
+       if (myid.eq.0) WRITE(3,'(A35,F12.2)')'Cd_fixed (if you used fixed Cd) =', Cd_fixed
 # else
-       WRITE(3,'(A13,F12.2)')'Cd_fixed         =', Cd_fixed
+       WRITE(3,'(A35,F12.2)')'Cd_fixed (if you used fixed Cd) =', Cd_fixed
 # endif
 
 # if defined (PARALLEL)
@@ -2750,7 +2967,7 @@ SUBROUTINE READ_INPUT
        ENDIF
 
 !  merge two parameters into the minimum one
-       MinDepthFrc=MIN(MinDepthFrc,MinDepth)
+       MinDepthFrc=MAX(MinDepthFrc,MinDepth)
        MinDepth=MinDepthFrc
 
 # if defined (PARALLEL)
@@ -2772,6 +2989,55 @@ SUBROUTINE READ_INPUT
       WRITE(3,'(A13,F12.2)')'MinDepthFrc=', MinDepthFrc
 # endif
 
+! Lauren - Arrival Time - Wave height threshold (in m) to pick up arrival time
+
+      CALL READ_LOGICAL(OUT_Time,FILE_NAME,'OUT_Time',ierr)
+      IF(ierr==1)THEN
+        OUT_Time = .FALSE.
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A60)')'Dont record wave arrival time'
+         WRITE(3,'(A60)')'Dont record wave arrival time'
+      endif
+# else
+         WRITE(*,'(A60)')'Dont record wave arrival time'
+         WRITE(3,'(A60)')'Dont record wave arrival time'
+# endif
+       ELSE
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A60)')'Record wave arrival time'
+         WRITE(3,'(A60)')'Record wave arrival time'
+      endif
+# else
+         WRITE(*,'(A60)')'Record wave arrival time'
+         WRITE(3,'(A60)')'Record wave arrival time'
+# endif
+       ENDIF
+
+     IF(OUT_Time)THEN
+      CALL READ_FLOAT(ArrTimeMin,FILE_NAME,'ArrTimeMinH',ierr)
+      IF(ierr==1)THEN
+        ArrTimeMin = 0.001 ! set equal to 0.1 cm if no threshold is given
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'ArrTimeMinH Default:  0.001 m'
+         WRITE(3,'(A40)')'ArrTimeMinH Default:  0.001 m'
+      endif
+# else
+         WRITE(*,'(A40)')'ArrTimeMinH Default:  0.001 m'
+         WRITE(3,'(A40)')'ArrTimeMinH Default:  0.001 m'
+# endif
+       ENDIF
+       
+# if defined (PARALLEL)
+      if (myid.eq.0) WRITE(3,'(A10,F12.6)')'ArrTimeMinH', ArrTimeMin
+# else
+      WRITE(3,'(A10,F12.6)')'ArrTimeMinH=', ArrTimeMin
+# endif
+     ENDIF
+ 
+! end Laurens modification
 
 # if defined (PARALLEL)
       if (myid.eq.0) WRITE(3,*)'                                         '
@@ -2780,6 +3046,39 @@ SUBROUTINE READ_INPUT
       WRITE(3,*)'                                         '
       WRITE(3,*)'-------- WAVE BREAKING -----------------'   
 # endif
+
+! roller
+
+      CALL READ_LOGICAL(ROLLER,FILE_NAME,'ROLLER_EFFECT',ierr)
+      IF(ierr==1)THEN
+        ROLLER = .FALSE.
+      ENDIF
+
+       IF(ROLLER)THEN
+         ROLLER_SWITCH = 1.0_SP
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'ROLLER_EFFECT:  INCLUDED'
+         WRITE(3,'(A40)')'ROLLER_EFFECT:  INCLUDED'
+      endif
+# else
+         WRITE(*,'(A40)')'ROLLER_EFFECT:  INCLUDED'
+         WRITE(3,'(A40)')'ROLLER_EFFECT:  INCLUDED'
+# endif
+       ELSE
+         ROLLER_SWITCH = ZERO
+# if defined (PARALLEL)
+      if (myid.eq.0) THEN
+         WRITE(*,'(A40)')'ROLLER_EFFECT:  NO'
+         WRITE(3,'(A40)')'ROLLER_EFFECT:  NO'
+      endif
+# else
+         WRITE(*,'(A40)')'ROLLER_EFFECT:  NO'
+         WRITE(3,'(A40)')'ROLLER_EFFECT:  NO'
+# endif
+       ENDIF
+
+! end roller
 
 ! show breaking
       CALL READ_LOGICAL(SHOW_BREAKING,FILE_NAME,'SHOW_BREAKING',ierr)
@@ -3109,6 +3408,9 @@ SUBROUTINE READ_INPUT
       CALL READ_LOGICAL(OUT_U,FILE_NAME,'U',ierr)
       CALL READ_LOGICAL(OUT_V,FILE_NAME,'V',ierr)
       CALL READ_LOGICAL(OUT_ETA,FILE_NAME,'ETA',ierr)
+# if defined(UseEtaScreen)
+      CALL READ_LOGICAL(OUT_EtaScreen,FILE_NAME,'ETAscreen',ierr)
+# endif
       CALL READ_LOGICAL(OUT_Hmax,FILE_NAME,'Hmax',ierr)
       CALL READ_LOGICAL(OUT_Hmin,FILE_NAME,'Hmin',ierr)
       CALL READ_LOGICAL(OUT_Umax,FILE_NAME,'Umax',ierr)
@@ -3133,8 +3435,10 @@ SUBROUTINE READ_INPUT
       CALL READ_LOGICAL(OUT_Gx,FILE_NAME,'Gx',ierr)
       CALL READ_LOGICAL(OUT_Gy,FILE_NAME,'Gy',ierr)
       CALL READ_LOGICAL(OUT_AGE,FILE_NAME,'AGE',ierr)
+      CALL READ_LOGICAL(OUT_ROLLER,FILE_NAME,'ROLLER',ierr)
+      CALL READ_LOGICAL(OUT_UNDERTOW,FILE_NAME,'UNDERTOW',ierr)
       CALL READ_LOGICAL(OUT_NU,FILE_NAME,'OUT_NU',ierr)
-      CALL READ_LOGICAL(OUT_TMP,FILE_NAME,'TMP',ierr)
+      CALL READ_LOGICAL(OUT_TMP,FILE_NAME,'TMP',ierr) 
 
 !ykchoi
 !	CALL READ_FLOAT(EtaBlowVal,FILE_NAME,'EtaBlowVal',ierr)
@@ -3160,6 +3464,9 @@ SUBROUTINE READ_INPUT
       WRITE(3,'(A15,L2)')'OUT_U',OUT_U
       WRITE(3,'(A15,L2)')'OUT_V',OUT_V
       WRITE(3,'(A15,L2)')'OUT_ETA',OUT_ETA
+# if defined (UseEtaScreen)
+      WRITE(3,'(A15,L2)')'OUT_ETAscreen',OUT_EtaScreen
+# endif
       WRITE(3,'(A15,L2)')'OUT_Hmax',OUT_Hmax
       WRITE(3,'(A15,L2)')'OUT_Hmin',OUT_Hmin
       WRITE(3,'(A15,L2)')'OUT_Umax',OUT_Umax
@@ -3184,8 +3491,11 @@ SUBROUTINE READ_INPUT
       WRITE(3,'(A15,L2)')'OUT_Gx',OUT_Gx
       WRITE(3,'(A15,L2)')'OUT_Gy',OUT_Gy
       WRITE(3,'(A15,L2)')'OUT_AGE',OUT_AGE
+      WRITE(3,'(A15,L2)')'OUT_ROLLER',OUT_ROLLER
+      WRITE(3,'(A15,L2)')'OUT_UNDERTOW',OUT_UNDERTOW
       WRITE(3,'(A15,L2)')'OUT_NU',OUT_NU
       WRITE(3,'(A15,L2)')'OUT_TMP',OUT_TMP
+      WRITE(3,'(A15,L2)')'OUT_TIME',OUT_Time
 # if defined (PARALLEL)
       endif
 # endif
@@ -3220,12 +3530,15 @@ SUBROUTINE STATIONS
      IMPLICIT NONE
 
      INTEGER :: iunit
+     INTEGER, DIMENSION(:),ALLOCATABLE :: BufferCount
+     REAL(SP),DIMENSION(:,:,:),ALLOCATABLE :: ZUV_Buffer
      REAL(SP) :: dum1,dum2
+     REAL(SP) :: eta_sta,u_sta,v_sta
      CHARACTER(LEN=80)::FILE_NAME=' '
      CHARACTER(LEN=80)::TMP_NAME=' '
      CHARACTER(LEN=80)::FDIR=' '
      LOGICAL :: FirstCallStation = .TRUE.
-     SAVE FirstCallStation
+     SAVE FirstCallStation, BufferCount,ZUV_Buffer
 
 ! initialize stations
      FDIR=TRIM(RESULT_FOLDER)
@@ -3234,6 +3547,9 @@ SUBROUTINE STATIONS
        ALLOCATE(ista(NumberStations),&
                 jsta(NumberStations),&
                 nsta(NumberStations))
+       ALLOCATE(BufferCount(NumberStations), &
+            ZUV_Buffer(StationOutputBuffer,NumberStations,4))
+       BufferCount = 0
 ! calculate how many output components
 
 ! check existing
@@ -3255,8 +3571,12 @@ SUBROUTINE STATIONS
        do i=1,NumberStations
           read(100,*) dum1,dum2
 # if defined (PARALLEL)
-          ista(i) = Nghost+dum1-npx*Mglob/px
-          jsta(i) = Nghost+dum2-npy*Nglob/py
+![---ykchoi Jan/23/2018
+          !ista(i) = Nghost+dum1-npx*Mglob/px
+          !jsta(i) = Nghost+dum2-npy*Nglob/py
+		ista(i) = Nghost+dum1-( iista - 1 )
+		jsta(i) = Nghost+dum2-( jjsta - 1 )
+!---ykchoi Jan/23/2018]
           if ((ista(i).ge.Ibeg).and.(ista(i).le.Iend).and.&
               (jsta(i).ge.Jbeg).and.(jsta(i).le.Jend)) then
              nsta(i) = 1
@@ -3290,8 +3610,39 @@ SUBROUTINE STATIONS
      do i=1,NumberStations
        if (nsta(i).eq.1) then
           iunit=100+i
-          write (iunit,'(20E16.8)') time, eta(ista(i),jsta(i)),&
-                          u(ista(i),jsta(i)),v(ista(i),jsta(i))
+           IF(mask(ista(i),jsta(i))<1)THEN
+             eta_sta=ZERO
+             u_sta=ZERO
+             v_sta=ZERO
+           ELSE  ! to avoid topography on nested water surface  
+             eta_sta=eta(ista(i),jsta(i))
+             u_sta=u(ista(i),jsta(i))
+             v_sta=v(ista(i),jsta(i)) 
+           ENDIF
+
+            IF(BufferCount(i)<StationOutputBuffer.AND.TIME<TOTAL_TIME)THEN
+              BufferCount(i) = BufferCount(i) +1
+              ZUV_BUFFER(BufferCount(i),i,1)=time
+              ZUV_BUFFER(BufferCount(i),i,2)=eta_sta
+              ZUV_BUFFER(BufferCount(i),i,3)=u_sta
+              ZUV_BUFFER(BufferCount(i),i,4)=v_sta
+            ELSE
+              DO j=1,StationOutputBuffer
+                write (iunit,'(4E16.5E4)') (ZUV_BUFFER(j,i,k),k=1,4)
+              ENDDO              
+              BufferCount(i) = 0
+              ZUV_BUFFER(:,i,1)=TOTAL_TIME
+              ZUV_BUFFER(:,i,2:4)=ZERO
+
+# if defined (PARALLEL)
+      if (myid.eq.0) WRITE(*,*) 'WRITE OUT STATAION ...'
+# else
+      WRITE(*,*) 'WRITE OUT STATIONS ...'
+# endif
+
+
+            ENDIF ! end buffer
+
        endif
      enddo
 
@@ -3325,13 +3676,15 @@ SUBROUTINE STATIONS_SPHERICAL_IJ
      IMPLICIT NONE
 
      INTEGER :: iunit
+     INTEGER, DIMENSION(:),ALLOCATABLE :: BufferCount
+     REAL(SP),DIMENSION(:,:,:),ALLOCATABLE :: ZUV_Buffer
      REAL(SP) :: dum1,dum2
      REAL(SP) :: eta_sta,u_sta,v_sta
      CHARACTER(LEN=80)::FILE_NAME=' '
      CHARACTER(LEN=80)::TMP_NAME=' '
      CHARACTER(LEN=80)::FDIR=' '
      LOGICAL :: FirstCallStation = .TRUE.
-     SAVE FirstCallStation
+     SAVE FirstCallStation, BufferCount,ZUV_Buffer
 
 ! initialize stations
      FDIR=TRIM(RESULT_FOLDER)
@@ -3340,6 +3693,9 @@ SUBROUTINE STATIONS_SPHERICAL_IJ
        ALLOCATE(ista(NumberStations),&
                 jsta(NumberStations),&
                 nsta(NumberStations))
+       ALLOCATE(BufferCount(NumberStations), &
+            ZUV_Buffer(StationOutputBuffer,NumberStations,4))
+       BufferCount = 0
   
 ! calculate how many output components
               
@@ -3347,8 +3703,12 @@ SUBROUTINE STATIONS_SPHERICAL_IJ
        do i=1,NumberStations
           read(100,*) dum1,dum2
 # if defined (PARALLEL)
-          ista(i) = Nghost+dum1-npx*Mglob/px
-          jsta(i) = Nghost+dum2-npy*Nglob/py
+![---ykchoi Jan/23/2018
+          !ista(i) = Nghost+dum1-npx*Mglob/px
+          !jsta(i) = Nghost+dum2-npy*Nglob/py
+          ista(i) = Nghost+dum1-( iista - 1 )
+          jsta(i) = Nghost+dum2-( jjsta - 1 )
+!---ykchoi Jan/23/2018]
           if ((ista(i).ge.Ibeg).and.(ista(i).le.Iend).and.&
               (jsta(i).ge.Jbeg).and.(jsta(i).le.Jend)) then
              nsta(i) = 1
@@ -3391,8 +3751,33 @@ SUBROUTINE STATIONS_SPHERICAL_IJ
             u_sta=u(ista(i),jsta(i))
             v_sta=v(ista(i),jsta(i)) 
           ENDIF
-          write (iunit,'(20E16.8)') time, eta_sta,&
-                          u_sta,v_sta
+
+            IF(BufferCount(i)<StationOutputBuffer.AND.TIME<TOTAL_TIME)THEN
+              BufferCount(i) = BufferCount(i) +1
+              ZUV_BUFFER(BufferCount(i),i,1)=time
+              ZUV_BUFFER(BufferCount(i),i,2)=eta_sta
+              ZUV_BUFFER(BufferCount(i),i,3)=u_sta
+              ZUV_BUFFER(BufferCount(i),i,4)=v_sta
+            ELSE
+              DO j=1,StationOutputBuffer
+                write (iunit,'(4E16.5E4)') (ZUV_BUFFER(j,i,k),k=1,4)
+              ENDDO              
+              BufferCount(i) = 0
+              ZUV_BUFFER(:,i,1)=TOTAL_TIME
+              ZUV_BUFFER(:,i,2:4)=ZERO
+
+# if defined (PARALLEL)
+      if (myid.eq.0) WRITE(*,*) 'WRITE OUT STATAION ...'
+# else
+      WRITE(*,*) 'WRITE OUT STATIONS ...'
+# endif
+
+
+            ENDIF ! end buffer
+
+
+!          write (iunit,'(20E16.5E4)') time, eta_sta,&
+!                          u_sta,v_sta
        endif
      enddo
 
@@ -3421,13 +3806,15 @@ SUBROUTINE STATIONS
      IMPLICIT NONE
 
      INTEGER :: iunit
+     INTEGER, DIMENSION(:),ALLOCATABLE :: BufferCount
+     REAL(SP),DIMENSION(:,:,:),ALLOCATABLE :: ZUV_Buffer
      REAL(SP) :: dum1,dum2
      REAL(SP) :: eta_sta,u_sta,v_sta
      CHARACTER(LEN=80)::FILE_NAME=' '
      CHARACTER(LEN=80)::TMP_NAME=' '
      CHARACTER(LEN=80)::FDIR=' '
      LOGICAL :: FirstCallStationSP = .TRUE.
-     SAVE FirstCallStationSP
+     SAVE FirstCallStationSP, BufferCount,ZUV_Buffer
 
 
 ! initialize stations
@@ -3437,16 +3824,26 @@ SUBROUTINE STATIONS
        ALLOCATE(ista(NumberStations),&
                 jsta(NumberStations),&
                 nsta(NumberStations))
+       ALLOCATE(BufferCount(NumberStations), &
+            ZUV_Buffer(StationOutputBuffer,NumberStations,4))
+       BufferCount = 0
+
 !       ALLOCATE(envelope(Mloc,Nloc))
 !       envelope = 0.d0
        open(100,FILE=TRIM(STATIONS_FILE))
        do i=1,NumberStations
           read(100,*) dum1,dum2
 # if defined (PARALLEL)
+![---ykchoi Jan/23/2018
+!          ista(i) = Nghost+1+nint((dum2-Lon_West)/Dphi) &
+!                     -npx*Mglob/px
+!          jsta(i) = Nghost+1+nint((dum1-Lat_South)/Dtheta) &
+!                     -npy*Nglob/py
           ista(i) = Nghost+1+nint((dum2-Lon_West)/Dphi) &
-                     -npx*Mglob/px
+                     -( iista - 1 )
           jsta(i) = Nghost+1+nint((dum1-Lat_South)/Dtheta) &
-                     -npy*Nglob/py
+                     -( jjsta - 1 )
+!---ykchoi Jan/23/2018]
           if ((ista(i).ge.Ibeg).and.(ista(i).le.Iend).and.&
               (jsta(i).ge.Jbeg).and.(jsta(i).le.Jend)) then
              nsta(i) = 1
@@ -3491,8 +3888,32 @@ SUBROUTINE STATIONS
             v_sta=v(ista(i),jsta(i)) 
           ENDIF
 
-          write (iunit,'(20E16.5)') time, eta_sta,&
-                          u_sta,v_sta
+            IF(BufferCount(i)<StationOutputBuffer.AND.TIME<TOTAL_TIME)THEN
+              BufferCount(i) = BufferCount(i) +1
+              ZUV_BUFFER(BufferCount(i),i,1)=time
+              ZUV_BUFFER(BufferCount(i),i,2)=eta_sta
+              ZUV_BUFFER(BufferCount(i),i,3)=u_sta
+              ZUV_BUFFER(BufferCount(i),i,4)=v_sta
+            ELSE
+              DO j=1,StationOutputBuffer
+                write (iunit,'(4E16.5E4)') (ZUV_BUFFER(j,i,k),k=1,4)
+              ENDDO              
+              BufferCount(i) = 0
+              ZUV_BUFFER(:,i,1)=TOTAL_TIME
+              ZUV_BUFFER(:,i,2:4)=ZERO
+
+# if defined (PARALLEL)
+      if (myid.eq.0) WRITE(*,*) 'WRITE OUT STATAION ...'
+# else
+      WRITE(*,*) 'WRITE OUT STATIONS ...'
+# endif
+
+
+            ENDIF ! end buffer
+
+
+!          write (iunit,'(20E16.5E4)') time, eta_sta,&
+!                          u_sta,v_sta
 
 !          write (iunit,*) time, eta(ista(i),jsta(i)),u(ista(i),jsta(i)),&
 !                                v(ista(i),jsta(i))
@@ -3532,6 +3953,9 @@ SUBROUTINE PREVIEW
 # endif
 # if defined(METEO)
      USE METEO_MODULE
+# endif
+# if defined(SEDIMENT)
+     USE SEDIMENT_MODULE
 # endif
 
      IMPLICIT NONE
@@ -3589,6 +4013,13 @@ SUBROUTINE PREVIEW
         TMP_NAME = TRIM(FDIR)//'eta_'//TRIM(FILE_NAME)
         call PutFile(TMP_NAME,Eta)
      ENDIF
+
+# if defined (UseEtaScreen)
+     IF(OUT_ETAscreen)THEN
+        TMP_NAME = TRIM(FDIR)//'etasrn_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,EtaScreen)
+     ENDIF
+# endif
 
      IF(OUT_Hmax)THEN
         TMP_NAME = TRIM(FDIR)//'hmax_'//TRIM(FILE_NAME)
@@ -3657,6 +4088,18 @@ SUBROUTINE PREVIEW
       ENDIF
      ENDIF
 
+     IF(OUT_ROLLER)THEN
+        TMP_NAME = TRIM(FDIR)//'roller_'//TRIM(FILE_NAME)
+         call PutFile(TMP_NAME,ROLLER_FLUX)
+     ENDIF
+
+     IF(OUT_UNDERTOW)THEN
+        TMP_NAME = TRIM(FDIR)//'U_undertow_'//TRIM(FILE_NAME)
+         call PutFile(TMP_NAME,UNDERTOW_U)
+        TMP_NAME = TRIM(FDIR)//'V_undertow_'//TRIM(FILE_NAME)
+         call PutFile(TMP_NAME,UNDERTOW_V)
+     ENDIF
+
       IF(VISCOSITY_BREAKING)THEN
        IF(OUT_NU)THEN
         TMP_NAME = TRIM(FDIR)//'nubrk_'//TRIM(FILE_NAME)
@@ -3664,6 +4107,11 @@ SUBROUTINE PREVIEW
        ENDIF
 !        TMP_NAME = TRIM(FDIR)//'etat_'//TRIM(FILE_NAME)
 !         call PutFile(TMP_NAME,etat) 
+      ENDIF
+
+      IF(OUT_Time)THEN
+        TMP_NAME = TRIM(FDIR)//'time_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,ARRTIME)
       ENDIF
 
 # if defined (METEO)
@@ -3704,6 +4152,31 @@ SUBROUTINE PREVIEW
 
      ENDIF
 # endif
+
+! sediment
+# if defined (SEDIMENT)
+        TMP_NAME = TRIM(FDIR)//'C_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,CH *Sdensity*RHO_WATER)
+        TMP_NAME = TRIM(FDIR)//'Pick_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,Pickup)
+        TMP_NAME = TRIM(FDIR)//'Depo_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,D)
+
+        TMP_NAME = TRIM(FDIR)//'DchgS_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,TotalSuspendLoad)
+        TMP_NAME = TRIM(FDIR)//'DchgB_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,TotalBedLoad)
+
+        TMP_NAME = TRIM(FDIR)//'BedFx_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,BedFluxX)
+        TMP_NAME = TRIM(FDIR)//'BedFy_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,BedFluxY)
+
+        TMP_NAME = TRIM(FDIR)//'dep_'//TRIM(FILE_NAME)
+        call PutFile(TMP_NAME,Depth)
+
+# endif
+! end sediment
 
      IF(OUT_TMP)THEN
         TMP_NAME = TRIM(FDIR)//'tmp_'//TRIM(FILE_NAME)
@@ -3949,8 +4422,8 @@ SUBROUTINE PutFile(FILE,PHI)
 ! format length
         write(FORMAT_LEN(1:1),'(A1)') '('
         write(FORMAT_LEN(2:8),'(I7)') Mglob
-        write(FORMAT_LEN(9:13),'(A5)') 'E16.6'
-        write(FORMAT_LEN(14:14),'(A1)') ')'
+        write(FORMAT_LEN(9:15),'(A7)') 'E16.6E4'
+        write(FORMAT_LEN(16:16),'(A1)') ')'
      ENDIF
 
         OPEN(1,FILE=TRIM(FILE))
@@ -3983,6 +4456,7 @@ SUBROUTINE OUTPUT_VESSEL
      USE GLOBAL
      USE INPUT_READ
      USE VESSEL_MODULE
+
      IMPLICIT NONE
      CHARACTER(LEN=80)::FDIR=' '
      LOGICAL :: FirstCallVessel = .TRUE.
@@ -4022,5 +4496,45 @@ END SUBROUTINE OUTPUT_VESSEL
 # endif
 ! end vessel
 
+# if defined (SEDIMENT)
+!-------------------------------------------------------------------------------------
+!
+!    OUTPUT_SEDIMENT is a subroutine to write vessel data
+!
+! HISTORY: 
+!    02/01/2018  Fengyan Shi
+!
+!-------------------------------------------------------------------------------------
+SUBROUTINE OUTPUT_SEDIMENT
+     USE GLOBAL
+     USE INPUT_READ
+# if defined (VESSEL)
+     USE VESSEL_MODULE
+# endif
+     IMPLICIT NONE
+     CHARACTER(LEN=80)::FDIR=' '
+     LOGICAL :: FirstCallSediment = .TRUE.
+     SAVE FirstCallSediment
+
+# if defined (PARALLEL)
+     IF(myid.eq.0)THEN
+# endif
+
+! initialize stations
+     if (FirstCallSediment) then
+       FDIR=TRIM(RESULT_FOLDER)
+       FirstCallSediment = .FALSE.
+     endif
+
+! time series here
+
+# if defined (PARALLEL)
+      ENDIF
+# endif
+
+END SUBROUTINE OUTPUT_SEDIMENT
+
+# endif
+! end sediment
 
 

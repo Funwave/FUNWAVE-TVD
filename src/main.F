@@ -137,10 +137,18 @@ Program FUNWAVE_TVD
 # if defined (VESSEL)
      USE VESSEL_MODULE
 # endif
+# if defined (SEDIMENT)
+     USE SEDIMENT_MODULE
+# endif
 
 # if defined (METEO)
      USE METEO_MODULE
 # endif
+# if defined (TRACKING)
+     USE TRACER
+# endif
+
+     USE TIDE_MODULE
 
      IMPLICIT NONE
 
@@ -151,7 +159,21 @@ Program FUNWAVE_TVD
      CALL MPI_INIT ( ier )
 # endif
 
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'MPI_INIT'     
+#    endif
+# endif
+
      CALL READ_INPUT
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'READ_INPUT'     
+#    else   
+       WRITE(*,*) 'READ_INPUT'
+#    endif
+# endif
 
 	![ykchoi(14.12.24.)
 	IF(INI_UVZ)THEN
@@ -161,11 +183,36 @@ Program FUNWAVE_TVD
 
      CALL INDEX
 
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'INDEX'     
+#    else   
+       WRITE(*,*) 'INDEX'
+#    endif
+# endif
+
 ! allocate variables
      CALL ALLOCATE_VARIABLES
 
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'ALLOCATION'     
+#    else   
+       WRITE(*,*) 'ALLOCATION'
+#    endif
+# endif
+
      CALL INITIALIZATION
+
+     CALL TIDE_INITIAL
       
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'INITIALIZATION'     
+#    else   
+       WRITE(*,*) 'INITIALIZATION'
+#    endif
+# endif
 
 # if defined (COUPLING)
      TIME=TIME_COUPLING_1
@@ -177,6 +224,22 @@ Program FUNWAVE_TVD
 
 # if defined (METEO)
      CALL METEO_INITIAL
+# endif
+
+# if defined (SEDIMENT)
+     CALL SEDIMENT_INITIAL
+# endif
+
+#if defined (TRACKING)
+     CALL TRACER_INITIAL
+# endif
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'INITIAL VESSEL, METEO, OR SEDIMENT if included'     
+#    else   
+       WRITE(*,*) 'INITIAL VESSEL, METEO, OR SEDIMENT if included'
+#    endif
 # endif
 
 ! time integration
@@ -191,6 +254,9 @@ Program FUNWAVE_TVD
 
    DO WHILE (TIME<TOTAL_TIME)
 
+!     move output here to get the initial condition 11/27/2018
+
+      CALL OUTPUT
 
      IF(WaveMaker(1:7)=='LEF_SOL')THEN
        CALL SOLITARY_WAVE_LEFT_BOUNDARY
@@ -200,8 +266,20 @@ Program FUNWAVE_TVD
      Eta0=Eta
      Ubar0=Ubar
      Vbar0=Vbar  
+# if defined (SEDIMENT)
+     CHH0=CHH
+# endif
+
+! previous update_mask
    
-     CALL UPDATE_MASK
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'UPDATE Eta Ubar Vbar, MASK'     
+#    else   
+       WRITE(*,*) 'UPDATE Eta Ubar Vbar, MASK'
+#    endif
+# endif
 
      CALL EXCHANGE
 
@@ -211,6 +289,14 @@ Program FUNWAVE_TVD
 
  
      CALL ESTIMATE_DT(Mloc,Nloc,DX,DY,U,V,H,MinDepthFrc,DT,CFL,TIME)
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'ESTIMATE_DT'     
+#    else   
+       WRITE(*,*) 'ESTIMATE_DT'
+#    endif
+# endif
   
 ! U0, V0 are moved to following part due to computation of Ut, Vt.
 	U0=U   !ykchoi(15. 08. 06.)
@@ -224,6 +310,14 @@ Program FUNWAVE_TVD
        CALL METEO_FORCING
 # endif
 
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'vessel, meteo forcing, if included'     
+#    else   
+       WRITE(*,*) 'vessel, meteo forcing, if included'
+#    endif
+# endif
+
      ! 3-ORDER RUNGE-KUTTA TIME STEPPING
      DO ISTAGE=1,3
 
@@ -231,15 +325,74 @@ Program FUNWAVE_TVD
          CALL Cal_Dispersion
        ENDIF 
 
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'Cal_Dispersion'     
+#    else   
+       WRITE(*,*) 'Cal_Dispersion'
+#    endif
+# endif
+
        CALL FLUXES
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'FLUXES'     
+#    else   
+       WRITE(*,*) 'FLUXES'
+#    endif
+# endif
 
        CALL SourceTerms   ! put sourceterms after fluxes in order to get eta_t
 
-       CALL ESTIMATE_HUV(ISTAGE)     
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'SourceTerms'     
+#    else   
+       WRITE(*,*) 'SourceTerms'
+#    endif
+# endif
+
+       CALL ESTIMATE_HUV(ISTAGE) 
+
+! etascreen was added, update_mask was moved here from outside RK 
+       CALL UPDATE_MASK
+
+       IF(TIDAL_BC)THEN
+         CALL TIDE_BC
+       ENDIF
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'ESTIMATE_HUV'     
+#    else   
+       WRITE(*,*) 'ESTIMATE_HUV'
+#    endif
+# endif   
+
+# if defined (SEDIMENT)
+     CALL SEDIMENT_ADVECTION_DIFFUSION(ISTAGE) 
+# endif
 
        CALL WAVE_BREAKING
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'WAVE_BREAKING'     
+#    else   
+       WRITE(*,*) 'WAVE_BREAKING'
+#    endif
+# endif
        
        CALL EXCHANGE
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'EXCHANGE'     
+#    else   
+       WRITE(*,*) 'EXCHANGE'
+#    endif
+# endif
        
 # if defined (COUPLING)
        CALL OneWayCoupling
@@ -260,19 +413,47 @@ Program FUNWAVE_TVD
 
      ENDDO
 
+# if defined (SEDIMENT)
+!   moved out of the RK loop 07/02/2019
+     IF(Bed_Change)THEN
+       CALL MORPHOLOGICAL_CHANGE
+     ENDIF
+# endif
+
      CALL MIXING_STUFF
+
+# if defined (TRACKING)
+     CALL TRACK_XY
+# endif
+
 
 !  find maximum eta velocity 
 
-      IF (OUT_Hmax.OR.OUT_Hmin.OR.OUT_Umax.OR.OUT_MFmax.OR.OUT_VORmax)THEN
+      IF (OUT_Hmax.OR.OUT_Hmin.OR.OUT_Umax.OR.OUT_MFmax.OR.OUT_VORmax.OR.OUT_Time)THEN
         CALL MAX_MIN_PROPERTY
-      ENDIF
-        
-      CALL OUTPUT
+      ENDIF        
 
       CALL CHECK_BLOWUP
+
+# if defined (DEBUG)
+#    if defined (PARALLEL)
+       IF(myid==0) WRITE(*,*) 'CHECK_BLOWUP'     
+#    else   
+       WRITE(*,*) 'CHECK_BLOWUP'
+#    endif
+# endif
   
    END DO
+
+   IF(NumberStations>0)THEN
+# if defined (SPHERICAL_IJ_STATION)
+       ! use IJ for coupling purpose
+       CALL STATIONS_SPHERICAL_IJ
+# else
+       CALL STATIONS
+# endif
+   ENDIF
+
 
 # if defined (COUPLING)
      CLOSE(11)

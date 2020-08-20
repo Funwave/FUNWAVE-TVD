@@ -310,7 +310,7 @@ SUBROUTINE MAX_MIN_PROPERTY
     USE METEO_MODULE
 # endif
     IMPLICIT NONE
-    REAL(SP) :: maxv, MaxAbsEta
+    REAL(SP) :: maxv, MaxAbsEta,omega_0
 
       DO J=1,Nloc
       DO I=1,Mloc
@@ -344,9 +344,34 @@ SUBROUTINE MAX_MIN_PROPERTY
         ENDIF
        ENDIF
 
+       !Lauren Schambach 3/2/2020 Matrix of Arrival Time
+       IF(OUT_Time)THEN
+         IF(MASK(I,J).GT.0)THEN !Check if wet
+           IF(ARRTIME(I,J).EQ.0)THEN !Only record time if a value doesnt already exist
+             IF(ABS(Eta(I,J)).GT.ArrTimeMin) ARRTIME(I,J) = TIME !If eta is greater than threshold, record arrival time
+           ENDIF
+         ENDIF
+       ENDIF
 
       ENDDO
       ENDDO
+
+      IF(OUT_VORmax) THEN
+# if defined (CARTESIAN)
+   ! the vorticity has been calculated in dispersion.F
+# else
+     CALL DERIVATIVE_X(Mloc,Nloc,Ibeg,Iend,Jbeg,Jend,MASK9,DX,V,Vx)
+     CALL DERIVATIVE_Y(Mloc,Nloc,Ibeg,Iend,Jbeg,Jend,MASK9,DY,U,Uy)
+     DO J=Jbeg,Jend
+     DO I=Ibeg,Iend
+        omega_0=ABS(Vx(I,J)-Uy(I,J))
+        IF(omega_0.GT.VorticityMax(I,J)) THEN
+          VorticityMax(I,J)=omega_0
+        ENDIF
+     ENDDO
+     ENDDO
+# endif
+      ENDIF ! max vorticity
 
 # if defined (PARALLEL)
       IF(OUT_VORmax) THEN
@@ -395,7 +420,9 @@ SUBROUTINE CHECK_BLOWUP
 	   CALL PREVIEW
 
 # if defined (PARALLEL)
-     call MPI_FINALIZE ( ier )
+     ! 2019/09/04 mayhl: Switched MPI_FINALIZE to MPI_ABORT 
+     !call MPI_FINALIZE ( ier )
+     call MPI_ABORT( MPI_COMM_WORLD , 9 , ier )
 # else
      STOP
 # endif

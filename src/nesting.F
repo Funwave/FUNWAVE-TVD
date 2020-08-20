@@ -173,8 +173,12 @@ SUBROUTINE COUPLING_INITIAL
    IF(N_COUPLING_WEST>0)THEN
 # if defined (PARALLEL)
     if ( n_west .eq. MPI_PROC_NULL ) then
-      Kstart_WEST=J_START_WEST+Nghost -npy*Nglob/py
-      Kend_WEST = J_START_WEST+Nghost+N_COUPLING_WEST-1 -npy*Nglob/py
+![---ykchoi Jan/23/2018
+!      Kstart_WEST=J_START_WEST+Nghost -npy*Nglob/py
+!      Kend_WEST = J_START_WEST+Nghost+N_COUPLING_WEST-1 -npy*Nglob/py
+      Kstart_WEST=J_START_WEST+Nghost - (jjsta - 1)
+      Kend_WEST = J_START_WEST+Nghost+N_COUPLING_WEST-1 - (jjsta - 1)
+!---ykchoi Jan/23/2018]
       IF((Kstart_WEST>Nghost.AND.Kstart_WEST<Nloc-Nghost+1).OR.&
      (Kend_WEST<Nloc-Nghost+1.AND.Kend_WEST>Nghost))THEN
        IF(Kstart_WEST<Nghost+1)THEN
@@ -212,8 +216,12 @@ SUBROUTINE COUPLING_INITIAL
    IF(N_COUPLING_EAST>0)THEN
 # if defined (PARALLEL)
     if ( n_east .eq. MPI_PROC_NULL ) then
-      Kstart_EAST=J_START_EAST+Nghost -npy*Nglob/py
-      Kend_EAST = J_START_EAST+Nghost+N_COUPLING_EAST-1 -npy*Nglob/py
+![---ykchoi Jan/23/2018
+!      Kstart_EAST=J_START_EAST+Nghost -npy*Nglob/py
+!      Kend_EAST = J_START_EAST+Nghost+N_COUPLING_EAST-1 -npy*Nglob/py
+      Kstart_EAST=J_START_EAST+Nghost - (jjsta - 1)
+      Kend_EAST = J_START_EAST+Nghost+N_COUPLING_EAST-1 - (jjsta - 1)
+!---ykchoi Jan/23/2018]
       IF((Kstart_EAST>Nghost.AND.Kstart_EAST<Nloc-Nghost+1).OR.&
      (Kend_EAST<Nloc-Nghost+1.AND.Kend_EAST>Nghost))THEN
        IF(Kstart_EAST<Nghost+1)THEN
@@ -251,8 +259,12 @@ SUBROUTINE COUPLING_INITIAL
    IF(N_COUPLING_SOUTH>0)THEN
 # if defined (PARALLEL)
     if ( n_suth .eq. MPI_PROC_NULL ) then
-      Kstart_SOUTH=I_START_SOUTH+Nghost -npx*Mglob/px
-      Kend_SOUTH = I_START_SOUTH+Nghost+N_COUPLING_SOUTH-1 -npx*Mglob/px
+![---ykchoi Jan/23/2018
+!      Kstart_SOUTH=I_START_SOUTH+Nghost -npx*Mglob/px
+!      Kend_SOUTH = I_START_SOUTH+Nghost+N_COUPLING_SOUTH-1 -npx*Mglob/px
+      Kstart_SOUTH=I_START_SOUTH+Nghost -(iista - 1)
+      Kend_SOUTH = I_START_SOUTH+Nghost+N_COUPLING_SOUTH-1 -(iista - 1)
+!---ykchoi Jan/23/2018]
       IF((Kstart_SOUTH>Nghost.AND.Kstart_SOUTH<Mloc-Nghost+1).OR.&
      (Kend_SOUTH<Mloc-Nghost+1.AND.Kend_SOUTH>Nghost))THEN
        IF(Kstart_SOUTH<Nghost+1)THEN
@@ -290,8 +302,12 @@ SUBROUTINE COUPLING_INITIAL
    IF(N_COUPLING_NORTH>0)THEN
 # if defined (PARALLEL)
     if ( n_nrth .eq. MPI_PROC_NULL ) then
-      Kstart_NORTH=I_START_NORTH+Nghost -npx*Mglob/px
-      Kend_NORTH = I_START_NORTH+Nghost+N_COUPLING_NORTH-1 -npx*Mglob/px
+![---ykchoi Jan/23/2018
+!      Kstart_NORTH=I_START_NORTH+Nghost -npx*Mglob/px
+!      Kend_NORTH = I_START_NORTH+Nghost+N_COUPLING_NORTH-1 -npx*Mglob/px
+      Kstart_NORTH=I_START_NORTH+Nghost - (iista - 1)
+      Kend_NORTH = I_START_NORTH+Nghost+N_COUPLING_NORTH-1 - (iista - 1)
+!---ykchoi Jan/23/2018]
       IF((Kstart_NORTH>Nghost.AND.Kstart_NORTH<Mloc-Nghost+1).OR.&
      (Kend_NORTH<Mloc-Nghost+1.AND.Kend_NORTH>Nghost))THEN
        IF(Kstart_NORTH<Nghost+1)THEN

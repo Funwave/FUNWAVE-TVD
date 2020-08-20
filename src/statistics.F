@@ -56,10 +56,15 @@ SUBROUTINE STATISTICS
      REAL(SP)::MassVolume=ZERO,Energy=ZERO,MaxEta=ZERO,MinEta=ZERO, &
               MaxU=ZERO,MaxV=ZERO,Fr=ZERO,UTotal=ZERO,UTotalMax=ZERO, &
 	      MaxM=ZERO
+     REAL(SP)::MassVolume0
+     LOGICAL :: FirstCallStatistics = .TRUE.
+     SAVE FirstCallStatistics
 # if defined (PARALLEL)
      REAL(SP)::myvar
 # endif
 !
+
+
      MassVolume=ZERO
      Energy=ZERO
      UTotalMax=ZERO
@@ -71,21 +76,23 @@ SUBROUTINE STATISTICS
 ! Energy=SUM(1/2*g*H^2*dx*dy+0.5*u^2*H*dx*dy)
 
 # if defined (CARTESIAN)
-       MassVolume=MassVolume+Eta(I,J)*DX*DY
+       IF(MASK(I,J)>0)THEN
+         MassVolume=MassVolume+Eta(I,J)*DX*DY
+       ENDIF
+
        Energy=Energy+0.5_SP*H(I,J)*H(I,J)*GRAV*DX*DY &
              +0.5_SP*U(I,J)*U(I,J)*H(I,J)*DX*DY &
              +0.5_SP*V(I,J)*V(I,J)*H(I,J)*DX*DY
 # else
-       MassVolume=MassVolume+Eta(I,J)*DX(I,J)*DY(I,J)
+       IF(MASK(I,J)>0)THEN
+         MassVolume=MassVolume+Eta(I,J)*DX(I,J)*DY(I,J)
+       ENDIF
        Energy=Energy+0.5_SP*H(I,J)*H(I,J)*GRAV*DX(I,J)*DY(I,J) &
              +0.5_SP*U(I,J)*U(I,J)*H(I,J)*DX(I,J)*DY(I,J) &
              +0.5_SP*V(I,J)*V(I,J)*H(I,J)*DX(I,J)*DY(I,J)
-# endif
-!       print*,I,J,Energy,H(I,J),U(I,J),V(I,J)       
+# endif      
      ENDDO
-!      pause
      ENDDO
-!     stop
 
      MaxEta=MAXVAL(Eta(Ibeg:Iend,Jbeg:Jend))
      MinEta=MINVAL(Eta(Ibeg:Iend,Jbeg:Jend))
@@ -107,13 +114,13 @@ SUBROUTINE STATISTICS
      IF(Fr==ZERO)Fr=SQRT(GRAV*MinDepthfrc)
 
 # if defined (PARALLEL)
-     call MPI_ALLREDUCE(MassVolume,myvar,1,MPI_SP,MPI_MAX,MPI_COMM_WORLD,ier)
+     call MPI_ALLREDUCE(MassVolume,myvar,1,MPI_SP,MPI_SUM,MPI_COMM_WORLD,ier)
      MassVolume = myvar
-     call MPI_ALLREDUCE(Energy,myvar,1,MPI_SP,MPI_MAX,MPI_COMM_WORLD,ier)
+     call MPI_ALLREDUCE(Energy,myvar,1,MPI_SP,MPI_SUM,MPI_COMM_WORLD,ier)
      Energy = myvar
      call MPI_ALLREDUCE(MaxEta,myvar,1,MPI_SP,MPI_MAX,MPI_COMM_WORLD,ier)
      MaxEta = myvar
-     call MPI_ALLREDUCE(MinEta,myvar,1,MPI_SP,MPI_MAX,MPI_COMM_WORLD,ier)
+     call MPI_ALLREDUCE(MinEta,myvar,1,MPI_SP,MPI_MIN,MPI_COMM_WORLD,ier)
      MinEta = myvar
      call MPI_ALLREDUCE(MaxU,myvar,1,MPI_SP,MPI_MAX,MPI_COMM_WORLD,ier)
      MaxU = myvar
@@ -125,6 +132,7 @@ SUBROUTINE STATISTICS
      Fr = myvar
 # endif
 
+
 # if defined (PARALLEL)
      if (myid.eq.0) then
 # endif
@@ -135,20 +143,64 @@ SUBROUTINE STATISTICS
      WRITE(*,101) Time, DT
      WRITE(*,*) ' MassVolume  Energy      MaxEta      MinEta      Max U       Max V '
      WRITE(*,101)  MassVolume,Energy,MaxEta,MinEta,MaxU,MaxV
-     WRITE(*,*) ' MaxTotalU   PhaseS      Froude '
-     WRITE(*,101) UTotalMax, Fr, UTotalMax/Fr
+     WRITE(*,*) ' MaxTotalU   PhaseS      Froude      WetDryMass'
+     WRITE(*,101) UTotalMax, Fr, UTotalMax/Fr, Dmass
 ! print log file
      WRITE(3,*) '----------------- STATISTICS ----------------'
      WRITE(3,*) ' TIME        DT'
      WRITE(3,101) Time, DT
      WRITE(3,*) ' MassVolume  Energy      MaxEta      MinEta      Max U       Max V '
      WRITE(3,101)  MassVolume,Energy,MaxEta,MinEta,MaxU,MaxV
-     WRITE(3,*) ' MaxTotalU   PhaseS      Froude '
-     WRITE(3,101)  UTotalMax, Fr, UTotalMax/Fr
+     WRITE(3,*) ' MaxTotalU   PhaseS      Froude      WetDryMass'
+     WRITE(3,101)  UTotalMax, Fr, UTotalMax/Fr, Dmass
 # if defined (PARALLEL)
      endif
 # endif
 
 101  FORMAT(6E12.4)
 
+# if defined (PARALLEL)
+     if (myid.eq.0) then
+# endif
+
+     CALL CHECK_STATISTICS(MassVolume)
+     CALL CHECK_STATISTICS(Energy)
+     CALL CHECK_STATISTICS(MaxEta)
+     CALL CHECK_STATISTICS(MinEta)
+     CALL CHECK_STATISTICS(MaxU)
+     CALL CHECK_STATISTICS(MaxV)
+     CALL CHECK_STATISTICS(UTotalMax)
+     CALL CHECK_STATISTICS(Fr)
+     CALL CHECK_STATISTICS(UTotalMax/Fr)
+     CALL CHECK_STATISTICS(Dmass)
+# if defined (PARALLEL)
+     endif
+# endif
+
+
 END SUBROUTINE STATISTICS
+
+SUBROUTINE CHECK_STATISTICS( val )
+
+    USE GLOBAL
+    IMPLICIT NONE
+    REAL(SP), INTENT(IN) :: val
+
+
+     IF (ISNAN(val)) THEN
+       WRITE(*,*) 'NaN detected in statistics, stopping simulation!'
+       WRITE(3,*) 'NaN detected in statistics, stopping simulation!'
+
+#if defined (PARALLEL)
+       CALL MPI_ABORT( MPI_COMM_WORLD , 9 , ier)
+#endif
+       STOP
+
+     END IF
+
+ END SUBROUTINE CHECK_STATISTICS
+
+
+
+
+

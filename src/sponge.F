@@ -139,7 +139,8 @@ SUBROUTINE CALCULATE_SPONGE_MAKER(M,N,Nghost,DX,DY,&
      USE PARAM
 # if defined (PARALLEL)
      USE GLOBAL, ONLY : n_west, n_east, n_suth, n_nrth,&
-                 px,py,npx,npy,Mglob,Nglob
+                 px,py,npx,npy,Mglob,Nglob, &
+	           iista   !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER, INTENT(IN)::M,N,Nghost
@@ -169,7 +170,10 @@ SUBROUTINE CALCULATE_SPONGE_MAKER(M,N,Nghost,DX,DY,&
          lim=1.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri = R_Sponge**(50*(i+npx*Mglob/px-1)/(Iwidth-1))
+![---ykchoi Jan/23/2018
+!       ri = R_Sponge**(50*(i+npx*Mglob/px-1)/(Iwidth-1))
+	ri = R_Sponge**(50*(i + (iista - 1) -1)/(Iwidth-1))
+!---ykchoi Jan/23/2018]
 # else
        ri=R_sponge**(50*(I-1)/(Iwidth-1))
 # endif
@@ -196,7 +200,8 @@ SUBROUTINE CALCULATE_FRICTION_SPONGE(M,N,Nghost,DX,DY,&
                         
 # if defined (PARALLEL)
      USE GLOBAL, ONLY : n_west, n_east, n_suth, n_nrth,px,py,npx,npy,&
-                        Mglob,Nglob
+                        Mglob,Nglob, &
+	                  iista, iiend, jjsta, jjend    !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER, INTENT(IN)::M,N,Nghost
@@ -243,7 +248,10 @@ SUBROUTINE CALCULATE_FRICTION_SPONGE(M,N,Nghost,DX,DY,&
      DO I=1,M
          lim=0.0_SP
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-i-npx*Mglob/px))
+![---ykchoi Jan/23/2018
+!        ri=MAX(0.0,REAL(Iwidth-i-npx*Mglob/px))
+        ri=MAX(0.0,REAL( Iwidth-i-(iista-1) ))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-I))
 # endif
@@ -265,7 +273,10 @@ SUBROUTINE CALCULATE_FRICTION_SPONGE(M,N,Nghost,DX,DY,&
      DO I=1,M
          lim=0.0_SP
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-M+I-(px-npx-1)*Mglob/px))
+![---ykchoi Jan/23/2018
+!       ri=MAX(0.0,REAL(Iwidth-M+I-(px-npx-1)*Mglob/px))
+       ri=MAX(0.0,REAL(Iwidth-M+I-(px-npx-1)*(iiend - iista + 1) ))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-M+I))
 # endif
@@ -300,7 +311,10 @@ SUBROUTINE CALCULATE_FRICTION_SPONGE(M,N,Nghost,DX,DY,&
          lim=0.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-J-npy*Nglob/py))
+![---ykchoi Jan/23/2018
+!       ri=MAX(0.0,REAL(Iwidth-J-npy*Nglob/py))
+       ri=MAX(0.0,REAL(Iwidth-J-(jjsta - 1)))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-J))
 # endif
@@ -326,7 +340,10 @@ SUBROUTINE CALCULATE_FRICTION_SPONGE(M,N,Nghost,DX,DY,&
          lim=0.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-N+J-(py-npy-1)*Nglob/py))
+![---ykchoi Jan/23/2018
+!       ri=MAX(0.0,REAL(Iwidth-N+J-(py-npy-1)*Nglob/py))
+       ri=MAX(0.0,REAL(Iwidth-N+J-(py-npy-1)*(jjend - jjsta + 1) ))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-N+J))
 # endif
@@ -365,7 +382,8 @@ SUBROUTINE CALCULATE_DIFFUSION_SPONGE(M,N,Nghost,DX,DY,&
                         
 # if defined (PARALLEL)
      USE GLOBAL, ONLY : n_west, n_east, n_suth, n_nrth,px,py,npx,npy,&
-                        Mglob,Nglob
+                        Mglob,Nglob, &
+	                  iista, iiend, jjsta, jjend    !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER, INTENT(IN)::M,N,Nghost
@@ -412,7 +430,10 @@ SUBROUTINE CALCULATE_DIFFUSION_SPONGE(M,N,Nghost,DX,DY,&
          lim=0.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-i-npx*Mglob/px))
+![---ykchoi Jan/23/2018
+!       ri=MAX(0.0,REAL(Iwidth-i-npx*Mglob/px))
+       ri=MAX(0.0,REAL(Iwidth-i-(iista - 1)))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-I))
 # endif
@@ -438,7 +459,10 @@ SUBROUTINE CALCULATE_DIFFUSION_SPONGE(M,N,Nghost,DX,DY,&
          lim=0.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-M+I-(px-npx-1)*Mglob/px))
+![---ykchoi Jan/23/2018
+!       ri=MAX(0.0,REAL(Iwidth-M+I-(px-npx-1)*Mglob/px))
+       ri=MAX(0.0,REAL(Iwidth-M+I-(px-npx-1)*(iiend - iista + 1) ))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-M+I))
 # endif
@@ -473,7 +497,10 @@ SUBROUTINE CALCULATE_DIFFUSION_SPONGE(M,N,Nghost,DX,DY,&
          lim=0.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-J-npy*Nglob/py))
+![---ykchoi Jan/23/2018
+!       ri=MAX(0.0,REAL(Iwidth-J-npy*Nglob/py))
+       ri=MAX(0.0,REAL(Iwidth-J-(jjsta - 1)))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-J))
 # endif
@@ -499,7 +526,10 @@ SUBROUTINE CALCULATE_DIFFUSION_SPONGE(M,N,Nghost,DX,DY,&
          lim=0.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri=MAX(0.0,REAL(Iwidth-N+J-(py-npy-1)*Nglob/py))
+![---ykchoi Jan/23/2018
+!       ri=MAX(0.0,REAL(Iwidth-N+J-(py-npy-1)*Nglob/py))
+       ri=MAX(0.0,REAL(Iwidth-N+J-(py-npy-1)*(jjend - jjsta + 1) ))
+!---ykchoi Jan/23/2018]
 # else
        ri=MAX(0.0,REAL(Iwidth-N+J))
 # endif
@@ -538,7 +568,8 @@ SUBROUTINE CALCULATE_SPONGE(M,N,Nghost,DX,DY,&
      USE GLOBAL, ONLY : depth,MinDepthFrc
 # if defined (PARALLEL)
      USE GLOBAL, ONLY : n_west, n_east, n_suth, n_nrth,px,py,npx,npy,&
-                        Mglob,Nglob
+                        Mglob,Nglob, &
+	                  iista, iiend, jjsta, jjend    !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER, INTENT(IN)::M,N,Nghost
@@ -585,7 +616,10 @@ SUBROUTINE CALCULATE_SPONGE(M,N,Nghost,DX,DY,&
          lim=1.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri = R_Sponge**(50*(i+npx*Mglob/px-1)/(Iwidth-1))
+![---ykchoi Jan/23/2018
+!       ri = R_Sponge**(50*(i+npx*Mglob/px-1)/(Iwidth-1))
+       ri = R_Sponge**(50*(i+(iista-1)-1)/(Iwidth-1))
+!---ykchoi Jan/23/2018]
 # else
        ri=R_sponge**(50*(I-1)/(Iwidth-1))
 # endif
@@ -610,7 +644,10 @@ SUBROUTINE CALCULATE_SPONGE(M,N,Nghost,DX,DY,&
          lim=1.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri = R_Sponge**(50*(M-i+(px-npx-1)*Mglob/px)/(Iwidth-1))
+![---ykchoi Jan/23/2018
+!       ri = R_Sponge**(50*(M-i+(px-npx-1)*Mglob/px)/(Iwidth-1))
+       ri = R_Sponge**(50*(M-i+(px-npx-1)*(iiend - iista + 1))/(Iwidth-1))
+!---ykchoi Jan/23/2018]
 # else
        ri=R_sponge**(50*(M-I)/(Iwidth-1))
 # endif
@@ -646,7 +683,10 @@ SUBROUTINE CALCULATE_SPONGE(M,N,Nghost,DX,DY,&
          lim=1.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri=R_sponge**(50*(J+npy*Nglob/py-1)/(Iwidth-1))
+![---ykchoi Jan/23/2018
+!       ri=R_sponge**(50*(J+npy*Nglob/py-1)/(Iwidth-1))
+       ri=R_sponge**(50*(J+ (jjsta - 1) -1)/(Iwidth-1))
+!---ykchoi Jan/23/2018]
 # else
        ri=R_sponge**(50*(J-1)/(Iwidth-1))
 # endif
@@ -672,7 +712,10 @@ SUBROUTINE CALCULATE_SPONGE(M,N,Nghost,DX,DY,&
          lim=1.0_SP
        ENDIF
 # if defined(PARALLEL)
-       ri = R_Sponge**(50*(N-J+(py-npy-1)*Nglob/py)/(Iwidth-1))
+![---ykchoi Jan/23/2018
+!       ri = R_Sponge**(50*(N-J+(py-npy-1)*Nglob/py)/(Iwidth-1))
+       ri = R_Sponge**(50*(N-J+(py-npy-1)*(jjend - jjsta + 1) )/(Iwidth-1))
+!---ykchoi Jan/23/2018]
 # else
        ri=R_sponge**(50*(N-J)/(Iwidth-1))	  
 # endif
@@ -707,15 +750,24 @@ SUBROUTINE CALCULATE_CD_BREAKWATER
      USE PARAM
      USE GLOBAL, ONLY : depth,MinDepthFrc,CD_breakwater,BreakWaterWidth, &
                         Mglob,Nglob,Ibeg,Iend,Jbeg,Jend,Nghost,DX,DY,&
-                        Mloc,Nloc 
+                        Mloc,Nloc,BreakWaterAbsorbCoef
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : px,py,npx,npy,myid,ier,NumberProcessor   
+     USE GLOBAL, ONLY : px,py,npx,npy,myid,ier,NumberProcessor, &
+                        iista, iiend, jjsta, jjend    !ykchoi (28/Jan/2018)   
 # endif                 
      IMPLICIT NONE
 # if defined (PARALLEL)
-     INTEGER,DIMENSION(NumberProcessor) :: npxs,npys
-     REAL(SP),DIMENSION(NumberProcessor) :: xx
-     INTEGER :: l
+![-------ykchoi (28/Jan/2018)      
+	!INTEGER,DIMENSION(NumberProcessor) :: npxs,npys
+      !REAL(SP),DIMENSION(NumberProcessor) :: xx
+      !INTEGER :: l
+	INTEGER :: Nista, Niend, Njsta, Njend
+	INTEGER, ALLOCATABLE :: Nistas(:), Niends(:), Njstas(:), Njends(:)
+	INTEGER :: irank, lenx, leny, lenxy, ireq
+	INTEGER :: istanum, iendnum, jstanum, jendnum
+	INTEGER :: istatus(mpi_status_size)
+	REAL(SP), ALLOCATABLE :: xx(:,:)
+!-------ykchoi (28/Jan/2018)]
 # endif
 
      REAL(SP)::ri,lim
@@ -751,7 +803,7 @@ SUBROUTINE CALCULATE_CD_BREAKWATER
         DO Ib=MAX(1,I-Iwidth),Min(Mglob,I+Iwidth)
           ri=SQRT(((Ib-I)*DXg)**2+((Jb-J)*DYg)**2)
           IF(ri.LE.BreakWaterWidth(I,J))THEN
-           tmp_2d=10.0_SP* &
+           tmp_2d=BreakWaterAbsorbCoef* &
              TANH( (BreakWaterWidth(I,J)-ri) / (0.3_SP*BreakWaterWidth(I,J)) )
 
 !if (J==20+Nghost.AND.I==825+Nghost)then
@@ -773,23 +825,77 @@ SUBROUTINE CALCULATE_CD_BREAKWATER
 ! distribute to CD_breakwater 
 
 # if defined (PARALLEL)
-     call MPI_Gather(npx,1,MPI_INTEGER,npxs,1,MPI_INTEGER,&
-          0,MPI_COMM_WORLD,ier)
-     call MPI_Gather(npy,1,MPI_INTEGER,npys,1,MPI_INTEGER,&
-          0,MPI_COMM_WORLD,ier)
+![-------ykchoi (28/Jan/2018)
+!     call MPI_Gather(npx,1,MPI_INTEGER,npxs,1,MPI_INTEGER,&
+!          0,MPI_COMM_WORLD,ier)
+!     call MPI_Gather(npy,1,MPI_INTEGER,npys,1,MPI_INTEGER,&
+!          0,MPI_COMM_WORLD,ier)
 
-     do i=1,Mloc
-     do j=1,Nloc
-        if (myid.eq.0) then
-           do l=1,px*py
-              xx(l) = tmp_glob(i+npxs(l)*(Iend-Ibeg+1),&
-                   j+npys(l)*(Jend-Jbeg+1))
-           enddo
-        endif
-        call MPI_Scatter(xx,1,MPI_SP,&
-             CD_breakwater(i,j),1,MPI_SP,0,MPI_COMM_WORLD,ier)
+!     do i=1,Mloc
+!     do j=1,Nloc
+!        if (myid.eq.0) then
+!           do l=1,px*py
+!              xx(l) = tmp_glob(i+npxs(l)*(Iend-Ibeg+1),&
+!                   j+npys(l)*(Jend-Jbeg+1))
+!           enddo
+!        endif
+!        call MPI_Scatter(xx,1,MPI_SP,&
+!             CD_breakwater(i,j),1,MPI_SP,0,MPI_COMM_WORLD,ier)
+!     enddo
+!     enddo
+
+     Nista = iista + Nghost;
+     Niend = iiend + Nghost;     
+     Njsta = jjsta + Nghost;     
+     Njend = jjend + Nghost;
+
+     allocate( Nistas(NumberProcessor), Niends(NumberProcessor),   &
+               Njstas(NumberProcessor), Njends(NumberProcessor) )
+          
+     call MPI_Gather( Nista, 1, MPI_INTEGER, Nistas, 1, MPI_INTEGER, &
+                      0, MPI_COMM_WORLD, ier )
+     call MPI_Gather( Niend, 1, MPI_INTEGER, Niends, 1, MPI_INTEGER, &
+                      0, MPI_COMM_WORLD, ier )
+     call MPI_Gather( Njsta, 1, MPI_INTEGER, Njstas, 1, MPI_INTEGER, &
+                      0, MPI_COMM_WORLD, ier )
+     call MPI_Gather( Njend, 1, MPI_INTEGER, Njends, 1, MPI_INTEGER, &
+                      0, MPI_COMM_WORLD, ier )
+
+     if( myid == 0 )then
+	     CD_breakwater = tmp_glob( 1:Mloc, 1:Nloc )
+     endif          
+
+     do irank=1, px*py-1
+     	  if( myid == 0 ) then
+          istanum = Nistas(irank+1) - Nghost
+          iendnum = Niends(irank+1) + Nghost
+          jstanum = Njstas(irank+1) - Nghost
+          jendnum = Njends(irank+1) + Nghost
+
+          lenx = iendnum - istanum + 1
+          leny = jendnum - jstanum + 1
+          lenxy = lenx*leny
+          allocate( xx(lenx, leny) )
+          
+          xx = tmp_glob( istanum:iendnum, jstanum:jendnum )
+          call mpi_isend( xx, lenxy, mpi_sp, irank, 1, mpi_comm_world, ireq, ier )
+          call mpi_wait( ireq, istatus, ier )
+          deallocate( xx )
+          
+	  elseif( myid == irank ) then
+	    
+          lenx = Niend-Nista+1+2*Nghost
+          leny = Njend-Njsta+1+2*Nghost
+          lenxy = lenx*leny
+          
+          call mpi_irecv( CD_breakwater, lenxy, mpi_sp, 0, 1, mpi_comm_world, ireq, ier )
+          call mpi_wait( ireq, istatus, ier )
+          
+	  endif
      enddo
-     enddo
+
+     deallocate( Nistas, Niends, Njstas, Njends )
+!-------ykchoi (28/Jan/2018)]
 
 # else
      CD_breakwater = tmp_glob

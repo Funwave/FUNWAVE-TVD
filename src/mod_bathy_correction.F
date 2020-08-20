@@ -53,7 +53,7 @@
 
 MODULE BATHY_CORRECTION_MODULE
   USE PARAM
-  USE GLOBAL,ONLY : Mloc,Nloc,Nghost,Ibeg,Iend,Jbeg,Jend,DX,DY,Depth
+  USE GLOBAL,ONLY : Mloc,Nloc,Nghost,Ibeg,Iend,Jbeg,Jend,DX,DY,Depth, INPUT_FILE_NAME
   USE INPUT_READ
 #if defined (PARALLEL)
   USE GLOBAL,ONLY : myid,ier, npx,npy,PX,PY
@@ -95,7 +95,7 @@ SUBROUTINE CORRECTION
      threshold = 0.05_SP
 
 ! read vessel number and folder from input.txt
-      FILE_NAME='input.txt'
+      FILE_NAME=INPUT_FILE_NAME
 
 
       CALL READ_FLOAT(SmoothBelowDepth,FILE_NAME,'SmoothBelowDepth',ierr)

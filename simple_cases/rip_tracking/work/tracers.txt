@@ -1,0 +1,4 @@
+line 1) number_tracers, 2) plot_interval, 3) x,y,start_time,z
+1  - number of tracers
+2.0 - plot interval for tracking
+100.0 100.0 0.0 0 - x,y,start_time,z

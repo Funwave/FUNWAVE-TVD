@@ -22,7 +22,7 @@ DEPTH_FILE = ../external_files/depth_30min.txt
   ! -------------------PRINT---------------------------------
   ! PRINT*,
   ! result folder
-RESULT_FOLDER = /Users/fengyanshi15/tmp1/
+RESULT_FOLDER = output/
 
   ! ------------------DIMENSION-----------------------------
   ! global grid dimension

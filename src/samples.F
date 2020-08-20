@@ -177,7 +177,8 @@ SUBROUTINE INITIAL_RECTANGULAR(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # endif
      USE PARAM
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : npx,npy,px,py,Mglob,Nglob,myid
+     USE GLOBAL, ONLY : npx,npy,px,py,Mglob,Nglob,myid, &
+					  iista, jjsta   !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER,INTENT(IN) :: M,N,Nghost
@@ -193,15 +194,27 @@ SUBROUTINE INITIAL_RECTANGULAR(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # if defined (PARALLEL)
 
 # if defined (CARTESIAN)
-     Il=Nghost+Xc/DX-WID/DX +1 - npx*Mglob/px
-     Ir=Nghost+Xc/DX+WID/DX +1 - npx*Mglob/px
-     Jl=Nghost+Yc/DY-WID/DY +1 - npy*Nglob/py
-     Jr=Nghost+Yc/DY+WID/DY +1 - npy*Nglob/py
+![---ykchoi Jan/23/2018
+!     Il=Nghost+Xc/DX-WID/DX +1 - npx*Mglob/px
+!     Ir=Nghost+Xc/DX+WID/DX +1 - npx*Mglob/px
+!     Jl=Nghost+Yc/DY-WID/DY +1 - npy*Nglob/py
+!     Jr=Nghost+Yc/DY+WID/DY +1 - npy*Nglob/py
+     Il=Nghost+Xc/DX-WID/DX +1 - (iista - 1)
+     Ir=Nghost+Xc/DX+WID/DX +1 - (iista - 1)
+     Jl=Nghost+Yc/DY-WID/DY +1 - (jjsta - 1)
+     Jr=Nghost+Yc/DY+WID/DY +1 - (jjsta - 1)
+!---ykchoi Jan/23/2018]
 # else
-     Il=Nghost+(Xc-Lon_West)/dphi-WID/dphi +1 - npx*Mglob/px
-     Ir=Nghost+(Xc-Lon_West)/dphi+WID/dphi +1 - npx*Mglob/px
-     Jl=Nghost+(Yc-Lat_South)/dtheta-WID/dtheta +1 - npy*Nglob/py
-     Jr=Nghost+(Yc-Lat_South)/dtheta+WID/dtheta +1 - npy*Nglob/py
+![---ykchoi Jan/23/2018
+!     Il=Nghost+(Xc-Lon_West)/dphi-WID/dphi +1 - npx*Mglob/px
+!     Ir=Nghost+(Xc-Lon_West)/dphi+WID/dphi +1 - npx*Mglob/px
+!     Jl=Nghost+(Yc-Lat_South)/dtheta-WID/dtheta +1 - npy*Nglob/py
+!     Jr=Nghost+(Yc-Lat_South)/dtheta+WID/dtheta +1 - npy*Nglob/py
+     Il=Nghost+(Xc-Lon_West)/dphi-WID/dphi +1 - (iista - 1)
+     Ir=Nghost+(Xc-Lon_West)/dphi+WID/dphi +1 - (iista - 1)
+     Jl=Nghost+(Yc-Lat_South)/dtheta-WID/dtheta +1 - (jjsta - 1)
+     Jr=Nghost+(Yc-Lat_South)/dtheta+WID/dtheta +1 - (jjsta - 1)
+!---ykchoi Jan/23/2018]
 # endif
 
      IF(Il>M.or.Ir<1.or.Jl>N.or.Jr<1)THEN
@@ -249,7 +262,8 @@ SUBROUTINE INITIAL_GAUSIAN(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # endif
      USE PARAM
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : npx,npy,px,py,Mglob,Nglob,myid
+     USE GLOBAL, ONLY : npx,npy,px,py,Mglob,Nglob,myid, &
+					  iista, jjsta   !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER,INTENT(IN) :: M,N,Nghost
@@ -268,8 +282,12 @@ SUBROUTINE INITIAL_GAUSIAN(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # if defined (CARTESIAN)
      DO J=1,N
      DO I=1,M
-       xr=(I-1)*DX-Nghost*DX + (npx*Mglob/px)*DX
-       yr=(J-1)*DY-Nghost*DY + (npy*Mglob/py)*DY
+![---ykchoi Jan/23/2018
+!       xr=(I-1)*DX-Nghost*DX + (npx*Mglob/px)*DX
+!       yr=(J-1)*DY-Nghost*DY + (npy*Mglob/py)*DY
+       xr=(I-1)*DX-Nghost*DX + (iista - 1)*DX
+       yr=(J-1)*DY-Nghost*DY + (jjsta - 1)*DY
+!---ykchoi Jan/23/2018]
        r=SQRT((xr-Xc)**2+(yr-Yc)**2)
        Eta(I,J) = AMP*EXP(-r**2/1.0_SP/WID**2)
      ENDDO
@@ -277,8 +295,12 @@ SUBROUTINE INITIAL_GAUSIAN(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # else
      DO J=1,N
      DO I=1,M
-      xr=(I-1)*dphi-Nghost*dphi + (npx*Mglob/px)*dphi+Lon_West
-      yr=(J-1)*dtheta-Nghost*dtheta + (npy*Nglob/py)*dtheta+Lat_South
+![---ykchoi Jan/23/2018
+!      xr=(I-1)*dphi-Nghost*dphi + (npx*Mglob/px)*dphi+Lon_West
+!      yr=(J-1)*dtheta-Nghost*dtheta + (npy*Nglob/py)*dtheta+Lat_South
+      xr=(I-1)*dphi-Nghost*dphi + (iista - 1)*dphi+Lon_West
+      yr=(J-1)*dtheta-Nghost*dtheta + (jjsta - 1)*dtheta+Lat_South
+!---ykchoi Jan/23/2018]
       r=SQRT((xr-Xc)**2+(yr-Yc)**2)
        Eta(I,J) = AMP*EXP(-r**2/1.0_SP/WID**2)
      ENDDO
@@ -329,7 +351,8 @@ SUBROUTINE INITIAL_DIPOLE(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # endif
      USE PARAM
 # if defined (PARALLEL)
-     USE GLOBAL, ONLY : npx,npy,px,py,Mglob,Nglob,myid
+     USE GLOBAL, ONLY : npx,npy,px,py,Mglob,Nglob,myid, &
+                        iista, jjsta   !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER,INTENT(IN) :: M,N,Nghost
@@ -348,8 +371,12 @@ SUBROUTINE INITIAL_DIPOLE(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # if defined (CARTESIAN)
      DO J=1,N
      DO I=1,M
-       xr=(I-1)*DX-Nghost*DX + (npx*Mglob/px)*DX
-       yr=(J-1)*DY-Nghost*DY + (npy*Nglob/py)*DY
+![---ykchoi Jan/23/2018
+!       xr=(I-1)*DX-Nghost*DX + (npx*Mglob/px)*DX
+!       yr=(J-1)*DY-Nghost*DY + (npy*Nglob/py)*DY
+       xr=(I-1)*DX-Nghost*DX + (iista - 1)*DX
+       yr=(J-1)*DY-Nghost*DY + (jjsta - 1)*DY
+!---ykchoi Jan/23/2018]
        r=SQRT((xr-Xc)**2+(yr-Yc)**2)
        uni=-1.414_SP/WID*(xr-Xc)
        Eta(I,J) = AMP*uni*EXP(-r**2/1.0_SP/WID**2+0.5_SP)
@@ -358,8 +385,12 @@ SUBROUTINE INITIAL_DIPOLE(M,N,Nghost,Dphi,Dtheta,Lon_West,Lat_South, &
 # else
      DO J=1,N
      DO I=1,M
-      xr=(I-1)*dphi-Nghost*dphi + (npx*Mglob/px)*dphi+Lon_West
-      yr=(J-1)*dtheta-Nghost*dtheta + (npy*Nglob/py)*dtheta+Lat_South
+![---ykchoi Jan/23/2018
+!      xr=(I-1)*dphi-Nghost*dphi + (npx*Mglob/px)*dphi+Lon_West
+!      yr=(J-1)*dtheta-Nghost*dtheta + (npy*Nglob/py)*dtheta+Lat_South
+      xr=(I-1)*dphi-Nghost*dphi + (iista - 1)*dphi+Lon_West
+      yr=(J-1)*dtheta-Nghost*dtheta + (jjsta - 1)*dtheta+Lat_South
+!---ykchoi Jan/23/2018]
       r=SQRT((xr-Xc)**2+(yr-Yc)**2)
        uni=-1.414_SP/WID*(xr-Xc)
        Eta(I,J) = AMP*uni*EXP(-r**2/1.0_SP/WID**2+0.5_SP)
@@ -407,7 +438,8 @@ END SUBROUTINE INITIAL_DIPOLE
 !-------------------------------------------------------------------------------------
 SUBROUTINE INITIAL_N_WAVE(M,N,DX,x1,x2,Ha,gamma_s,dep,U,V,Eta)
 # if defined (PARALLEL)
-     USE GLOBAL, only: npx,px,Mglob
+     USE GLOBAL, only: npx,px,Mglob, &
+	                 iista   !ykchoi Jan/23/2018
 # endif
      USE PARAM
      IMPLICIT NONE
@@ -436,14 +468,20 @@ SUBROUTINE INITIAL_N_WAVE(M,N,DX,x1,x2,Ha,gamma_s,dep,U,V,Eta)
 # if defined (CARTESIAN)
 # if defined (PARALLEL)
 ! start from ghost cell
-       tmp1=(npx*Mglob/px+I-1)*DX
+![---ykchoi Jan/23/2018       
+!     tmp1=(npx*Mglob/px+I-1)*DX
+	tmp1=( (iista - 1) +I-1)*DX
+!---ykchoi Jan/23/2018]
 # else
        tmp1=(I-1)*DX
 # endif
 # else 
 # if defined (PARALLEL)
 ! start from ghost cell
-       tmp1=(npx*Mglob/px+I-1)*DX(I,J)
+![---ykchoi Jan/23/2018       
+!       tmp1=(npx*Mglob/px+I-1)*DX(I,J)
+      tmp1=( (iista - 1) +I-1)*DX(I,J)
+!---ykchoi Jan/23/2018]
 # else
        tmp1=(I-1)*DX(I,J)
 # endif
@@ -471,10 +509,11 @@ END SUBROUTINE INITIAL_N_WAVE
 !
 !-------------------------------------------------------------------------------------
 SUBROUTINE INITIAL_SOLITARY_WAVE(M,N,DX,Xwavemaker,&
-           AMP_Soli,Dep_Soli,Beta,U,V,Eta)
+           AMP_Soli,Dep_Soli,Beta,U,V,Eta,SolitaryPositiveDirection)
      USE PARAM
 # if defined (PARALLEL)
-     USE GLOBAL, only: npx,px,Mglob
+     USE GLOBAL, only: npx,px,Mglob, &
+	                 iista    !ykchoi Jan/23/2018
 # endif
      IMPLICIT NONE
      INTEGER,INTENT(IN) :: M,N
@@ -487,6 +526,7 @@ SUBROUTINE INITIAL_SOLITARY_WAVE(M,N,DX,Xwavemaker,&
      REAL(SP),DIMENSION(M,N),INTENT(OUT) :: U,V,Eta
      REAL(SP),INTENT(IN) :: AMP_Soli
      REAL(SP) :: A,B,A1,A2,alpha,SC,Cph,C_ph
+     LOGICAL,INTENT(IN) :: SolitaryPositiveDirection
 
 !     alpha=0.5_SP*Beta*Beta+Beta
    ! something wrong here. if beta=-0.531, then alpha should be -0.39
@@ -500,19 +540,29 @@ SUBROUTINE INITIAL_SOLITARY_WAVE(M,N,DX,Xwavemaker,&
 # if defined (CARTESIAN)
 # if defined (PARALLEL)
 ! start from ghost cell
-       SC=1.0_SP/COSH(B*(npx*Mglob/px+I-Xwavemaker/DX-1)*DX)
+![---ykchoi Jan/23/2018
+!       SC=1.0_SP/COSH(B*(npx*Mglob/px+I-Xwavemaker/DX-1)*DX)
+       SC=1.0_SP/COSH(B*( (iista - 1) +I-Xwavemaker/DX-1)*DX)
+!---ykchoi Jan/23/2018]
 # else
        SC=1.0_SP/COSH(B*(I-Xwavemaker/DX-1)*DX)
 # endif
 # else
 # if defined (PARALLEL)
-       SC=1.0_SP/COSH(B*(npx*Mglob/px+I-Xwavemaker/DX(I,J)-1)*DX(I,J))
+![---ykchoi Jan/23/2018
+!       SC=1.0_SP/COSH(B*(npx*Mglob/px+I-Xwavemaker/DX(I,J)-1)*DX(I,J))
+       SC=1.0_SP/COSH(B*( (iista - 1) +I-Xwavemaker/DX(I,J)-1)*DX(I,J))
+!---ykchoi Jan/23/2018]
 # else
        SC=1.0_SP/COSH(B*(I-Xwavemaker/DX(I,J)-1)*DX(I,J))
 # endif
 # endif
        Eta(I,J)=A1*SC*SC+A2*SC*SC*SC*SC
-       U(I,J)=A*SC*SC
+       IF(SolitaryPositiveDirection)THEN
+         U(I,J)=A*SC*SC
+       ELSE
+         U(I,J)=-A*SC*SC
+       ENDIF
        V(I,J)=ZERO
      ENDDO
      ENDDO

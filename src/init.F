@@ -54,6 +54,8 @@
 SUBROUTINE ALLOCATE_VARIABLES
      USE GLOBAL
 
+! coordinate for cartesian only
+     ALLOCATE (Xco(Mloc),Yco(Nloc))
 ! allocate variables
      ALLOCATE(DelxU(Mloc,Nloc),DelxHU(Mloc,Nloc),DelxV(Mloc,Nloc),DelxEtar(Mloc,Nloc),&
               DelyU(Mloc,Nloc),DelyHV(Mloc,Nloc),DelyV(Mloc,Nloc),DelyEtar(Mloc,Nloc),&
@@ -141,6 +143,10 @@ SUBROUTINE ALLOCATE_VARIABLES
       ALLOCATE(Eta(Mloc,Nloc),Eta0(Mloc,Nloc), &
                Ubar0(Mloc,Nloc),Vbar0(Mloc,Nloc),&
                Ubar(Mloc,Nloc),Vbar(Mloc,Nloc))
+# if defined(UseEtaScreen)
+! wetting and drying
+      ALLOCATE(EtaScreen(Mloc,Nloc))
+# endif
 ! dispersion updating variables
 # if defined (CARTESIAN)
       ALLOCATE(U4(Mloc,Nloc),V4(Mloc,Nloc),U1p(Mloc,Nloc), & 
@@ -177,6 +183,8 @@ SUBROUTINE ALLOCATE_VARIABLES
        nu_break=nu_bkg
       ENDIF
 	
+      ALLOCATE(ROLLER_FLUX(Mloc,Nloc),UNDERTOW_U(Mloc,Nloc),UNDERTOW_V(Mloc,Nloc))
+
       IF(WAVEMAKER_VIS)THEN
        ALLOCATE(nu_break(Mloc,Nloc))
        nu_break=ZERO
@@ -203,7 +211,10 @@ SUBROUTINE ALLOCATE_VARIABLES
         ALLOCATE(MomentumFluxMax(Mloc,Nloc))
         MomentumFluxMax=ZERO
       ENDIF
-      
+      IF(OUT_Time)THEN
+        ALLOCATE(ARRTIME(Mloc,Nloc))
+        ARRTIME=ZERO
+      ENDIF      
 
 END SUBROUTINE ALLOCATE_VARIABLES
 
@@ -224,6 +235,7 @@ SUBROUTINE INITIALIZATION
      USE IFPORT
 # endif
      IMPLICIT NONE
+     INTEGER :: VTYPE
      CHARACTER(LEN=80) :: WHAT
 # if defined (PARALLEL)
      REAL(SP),DIMENSION(:,:),ALLOCATABLE :: VarGlob
@@ -295,8 +307,12 @@ SUBROUTINE INITIALIZATION
      Do J=1,Nloc
      Do I=1,Mloc
 # if defined (PARALLEL)
+![---ykchoi Jan/23/2018
+!       Lat_theta(I,J)=Lat_South*pi/180.0_SP-Nghost*Dtheta_r &
+!                       +(npy*Nglob/py+J-1)*Dtheta_r
        Lat_theta(I,J)=Lat_South*pi/180.0_SP-Nghost*Dtheta_r &
-                       +(npy*Nglob/py+J-1)*Dtheta_r
+                       +((jjsta - 1)+J-1)*Dtheta_r
+!---ykchoi Jan/23/2018]
 # else
        Lat_theta(I,J)=Lat_South*pi/180.0_SP-Nghost*Dtheta_r &
                        +(J-1)*Dtheta_r
@@ -447,16 +463,79 @@ SUBROUTINE INITIALIZATION
      SCREEN_COUNT=ZERO
      SPONGE=1.0_SP
      SpongeMaker=1.0_SP
-      
-    
+
+! coordinate for cartesian only
+! Xco, and Yco
+
+# if defined (PARALLEL)
+![---ykchoi Jan/23/2018
+!     Xco(Ibeg) = npx*(Mloc-2*Nghost)*DX
+# if defined (CARTESIAN)
+     Xco(Ibeg) = (iista-1)*DX
+# else
+    Xco(Ibeg) = (iista-1)*DX(1,1)
+# endif 
+! cartesian
+!---ykchoi Jan/23/2018]
+# else
+     Xco(Ibeg) = ZERO
+# endif
+
+     DO I = Ibeg+1,Mloc
+# if defined (CARTESIAN)
+       Xco(I) = Xco(I-1)+DX
+# else
+       Xco(I) = Xco(I-1)+DX(1,1)
+# endif
+     ENDDO
+     DO I = Ibeg-1,Ibeg-Nghost,-1
+# if defined (CARTESIAN)
+       Xco(I) = Xco(I+1)-DX
+# else
+       Xco(I) = Xco(I+1)-DX(1,1)
+# endif
+     ENDDO
+
+# if defined (PARALLEL)
+![---ykchoi Jan/23/2018
+!     Yco(Jbeg) = npy*(Nloc-2*Nghost)*DY
+# if defined (CARTESIAN)
+     Yco(Jbeg) = (jjsta-1)*DY
+# else
+     Yco(Jbeg) = (jjsta-1)*DY(1,1)
+#endif
+!---ykchoi Jan/23/2018]
+# else
+     Yco(Jbeg) = ZERO
+# endif
+     DO J = Jbeg+1,Nloc
+# if defined (CARTESIAN)
+       Yco(J) = Yco(J-1)+DY
+# else
+       Yco(J) = Yco(J-1)+DY(1,1)
+# endif
+     ENDDO
+     DO J = Jbeg-1,Jbeg-Nghost,-1
+# if defined (CARTESIAN)
+       Yco(J) = Yco(J+1)-DY
+# else
+       Yco(J) = Yco(J+1)-DY(1,1)
+# endif
+     ENDDO
+
+          
      IF(SHOW_BREAKING)THEN
      AGE_BREAKING = ZERO
      ENDIF
 
-     PLOT_COUNT=PLOT_INTV+SMALL
-     PLOT_COUNT_STATION=PLOT_INTV_STATION+SMALL
+     ROLLER_FLUX = ZERO
+     UNDERTOW_U =ZERO
+     UNDERTOW_V =ZERO
 
-     SCREEN_COUNT=SCREEN_INTV+SMALL
+     PLOT_COUNT=PLOT_INTV
+     PLOT_COUNT_STATION=PLOT_INTV_STATION
+
+     SCREEN_COUNT=SCREEN_INTV
    
      DT=ZERO
 
@@ -615,29 +694,16 @@ SUBROUTINE INITIALIZATION
 # endif
 
 ! depth at ghost cells and re-construct depth at x,y-interfaces
+! use mirror instead of continuous used before, date: 02/24/2019
+! the reason for using mirror is eta bc is mirror at open bc
+! it is important for complex bathy/topo at bc
 
-# if defined(PARALLEL)
-! done at the last step
+    VTYPE=1
+# if defined (CARTESIAN)
+    CALL PHI_COLL(Mloc,Nloc,Ibeg,Iend,Jbeg,Jend,Nghost,Depth,VTYPE,PERIODIC)
 # else
-! ghost cells
-     DO I=Ibeg,Iend
-       DO J=1,Nghost
-        Depth(I,J)=Depth(I,Jbeg)
-       ENDDO
-       DO J=Jend+1,Nloc
-        Depth(I,J)=Depth(I,Jend)
-       ENDDO
-     ENDDO
-
-     DO J=1,Nloc
-       DO I=1,Nghost
-        Depth(I,J)=Depth(Ibeg,J)
-       ENDDO
-       DO I=Iend+1,Mloc
-        Depth(I,J)=Depth(Iend,J)
-       ENDDO
-     ENDDO  
-# endif  
+    CALL PHI_COLL(Mloc,Nloc,Ibeg,Iend,Jbeg,Jend,Nghost,Depth,VTYPE)
+# endif
 
 ! correction bathymetry
     IF (BATHY_CORRECTION)THEN
@@ -760,12 +826,19 @@ SUBROUTINE INITIALIZATION
 ! initial eta u and v for deforming
      IF(INI_UVZ) THEN
         CALL INITIAL_UVZ
+       IF(BED_DEFORMATION)THEN
+         DO J=1,Nloc
+         DO I=1,Mloc
+           Depth(I,J)=Depth(I,J)-ETA(I,J)
+         ENDDO
+         ENDDO         
+       ENDIF
      ENDIF 
 
 ! initial solitary wave
      IF(WaveMaker(1:7)=='INI_SOL') THEN
        CALL INITIAL_SOLITARY_WAVE(Mloc,Nloc, DX,Xwavemaker,& 
-          AMP_SOLI,Dep_Soli,Beta_ref,U,V,Eta)
+          AMP_SOLI,Dep_Soli,Beta_ref,U,V,Eta,SolitaryPositiveDirection)
      ENDIF
 
 
@@ -855,6 +928,23 @@ SUBROUTINE INITIALIZATION
      ENDIF
 
 ! get Eta and H
+
+    IF(NO_MASK_FILE)THEN
+     DO J=1,Nloc
+     DO I=1,Mloc
+      IF(Eta(I,J)<-DEPTH(I,J))THEN
+       MASK(I,J)=0
+       Eta(I,J)=MinDepth-Depth(I,J)
+# if defined(UseEtaScreen)
+       EtaScreen(I,J)=Eta(I,J)
+# endif
+      ELSE
+       MASK(I,J)=1
+      ENDIF
+     ENDDO
+     ENDDO
+    ENDIF    
+
      H=MAX(Eta*Gamma3+Depth,MinDepthFrc)
      HU=H*U
      HV=H*V
@@ -866,18 +956,6 @@ SUBROUTINE INITIALIZATION
      Ubar=HU+gamma1*U1p*H
      Vbar=HV+gamma1*V1p*H
 
-    IF(NO_MASK_FILE)THEN
-     DO J=1,Nloc
-     DO I=1,Mloc
-      IF(Eta(I,J)<-DEPTH(I,J))THEN
-       MASK(I,J)=0
-       Eta(I,J)=MinDepth-Depth(I,J)
-      ELSE
-       MASK(I,J)=1
-      ENDIF
-     ENDDO
-     ENDDO
-    ENDIF    
   
 ! read obstacle structures 
      IF(OBSTACLE)THEN

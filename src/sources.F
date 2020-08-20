@@ -104,8 +104,12 @@ SUBROUTINE SourceTerms
           DO I=1,Mloc
 
 # if defined (PARALLEL)
-            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
-            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+![---ykchoi Jan/23/2018
+!            xmk=(I-Ibeg)*DXg+npx*(Mloc-2*Nghost)*DXg
+!            ymk=(J-Jbeg)*DYg+npy*(Nloc-2*Nghost)*DYg
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+!---ykchoi Jan/23/2018]
 # else
             xmk=(I-Ibeg)*DXg
             ymk=(J-Jbeg)*DYg
@@ -174,6 +178,10 @@ SUBROUTINE SourceTerms
 
         nu_vis = nu_break
 
+# if defined (DEEP_DRAFT_VESSEL)
+       nu_vis = nu_vis + VisVessel_2D
+# endif
+
 !       DO J=Jbeg,Jend
 !       DO I=Ibeg,Iend
 !         nu_vis(I,J)=nu_break(I,J)
@@ -208,7 +216,9 @@ SUBROUTINE SourceTerms
        SourceX(I,J)=GRAV*(Eta(I,J))/DX*(Depthx(I+1,J)-Depthx(I,J))*MASK(I,J) &
  ! friction
 # if defined (MANNING)
-                   -(GRAV*Cd(I,J)**2/H(I,J))*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
+                   -(GRAV*Cd(I,J)**2/  &
+                   Max(H(I,J),MinDepthFrc)**(0.333333_SP))  &
+                   *U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # else
                    -Cd(I,J)*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # endif
@@ -233,6 +243,26 @@ SUBROUTINE SourceTerms
                    *Depth(I,J)
        ENDIF
 
+# if defined (DEEP_DRAFT_VESSEL)
+          SourceX(I,J) = SourceX(I,J) &
+                   -CdVessel_2D(I,J)*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J))
+# endif
+
+       IF(WaveMakerCurrentBalance)THEN
+# if defined (PARALLEL)
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+# else
+            xmk=(I-Ibeg)*DXg
+            ymk=(J-Jbeg)*DYg
+# endif
+         IF(ABS(xmk-Xc_WK)<Width_WK.AND. &
+            ABS(ymk-Yc_WK)<Ywidth_WK/2.0_SP)THEN
+            SourceX(I,J) = SourceX(I,J) &
+                  -WaveMakerCd*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J))
+         ENDIF
+       ENDIF ! current balance
+
        IF(BREAKWATER) THEN
           ! note that, compared to wei et al, we used flux. so need multiply D
           SourceX(I,J) = SourceX(I,J) &
@@ -243,7 +273,9 @@ SUBROUTINE SourceTerms
        SourceY(I,J)=GRAV*(Eta(I,J))/DY*(Depthy(I,J+1)-Depthy(I,J))*MASK(I,J) &
                           ! friction
 # if defined (MANNING)
-                   -(GRAV*Cd(I,J)**2/H(I,J))*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
+                   -(GRAV*Cd(I,J)**2/  &
+                   Max(H(I,J),MinDepthFrc)**(0.333333_SP))  &
+                   *V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # else
                    -Cd(I,J)*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # endif                          
@@ -265,6 +297,27 @@ SUBROUTINE SourceTerms
                    -CD_4_SPONGE(I,J)*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
                     *Depth(I,J)             
        ENDIF
+
+# if defined (DEEP_DRAFT_VESSEL)
+          SourceY(I,J) = SourceY(I,J) &
+                   -CdVessel_2D(I,J)*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J))
+# endif
+
+       IF(WaveMakerCurrentBalance)THEN
+# if defined (PARALLEL)
+	      xmk=(I-Ibeg)*DXg + (iista-1)*DXg
+	      ymk=(J-Jbeg)*DYg + (jjsta-1)*DYg
+# else
+            xmk=(I-Ibeg)*DXg
+            ymk=(J-Jbeg)*DYg
+# endif
+         IF(ABS(xmk-Xc_WK)<Width_WK.AND. &
+            ABS(ymk-Yc_WK)<Ywidth_WK/2.0_SP)THEN
+            SourceY(I,J) = SourceY(I,J) &
+                  -WaveMakerCd*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J))
+         ENDIF
+       ENDIF ! current balance
+
 
        IF(BREAKWATER) THEN
           ! note that, compared to wei et al, we used flux. so need multiply D
@@ -381,7 +434,9 @@ SUBROUTINE SourceTerms
        SourceX(I,J)=GRAV*(Eta(I,J))*SlopeX(I,J)*MASK(I,J) &
                        ! friction
 # if defined (MANNING)
-                   -(GRAV*Cd(I,J)**2/H(I,J))*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
+                   -(GRAV*Cd(I,J)**2/  &
+                   Max(H(I,J),MinDepthFrc)**(0.333333_SP))  &
+                   *U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # else
                    -Cd(I,J)*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # endif
@@ -396,7 +451,9 @@ SUBROUTINE SourceTerms
        SourceY(I,J)=GRAV*(Eta(I,J))*SlopeY(I,J)*MASK(I,J) &
                           ! friction
 # if defined (MANNING)
-                   -(GRAV*Cd(I,J)**2/H(I,J))*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
+                   -(GRAV*Cd(I,J)**2/  &
+                   Max(H(I,J),MinDepthFrc)**(0.333333_SP))  &
+                   *V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # else
                    -Cd(I,J)*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # endif
@@ -410,7 +467,9 @@ SUBROUTINE SourceTerms
        SourceX(I,J)=GRAV*(Eta(I,J))*SlopeX(I,J)*MASK(I,J) &
                        ! friction
 # if defined (MANNING)
-                   -(GRAV*Cd(I,J)**2/H(I,J))*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
+                   -(GRAV*Cd(I,J)**2/  &
+                   Max(H(I,J),MinDepthFrc)**(0.333333_SP))  &
+                   *U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # else
                    -Cd(I,J)*U(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # endif
@@ -425,7 +484,9 @@ SUBROUTINE SourceTerms
        SourceY(I,J)=GRAV*(Eta(I,J))*SlopeY(I,J)*MASK(I,J) &
                           ! friction
 # if defined (MANNING)
-                   -(GRAV*Cd(I,J)**2/H(I,J))*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
+                   -(GRAV*Cd(I,J)**2/  &
+                   Max(H(I,J),MinDepthFrc)**(0.333333_SP))  &
+                   *V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # else
                    -Cd(I,J)*V(I,J)*SQRT(U(I,J)*U(I,J)+V(I,J)*V(I,J)) &
 # endif
@@ -507,12 +568,8 @@ SUBROUTINE SourceTerms
      ENDDO
 
 # if defined (VESSEL)
-# if defined (VESSEL_PANEL_SOURCE)
-   ! no pressure term for panel source 
-# else
       SourceX = SourceX + VesselPressureX
       SourceY = SourceY + VesselPressureY
-# endif
 # endif
 
 # if defined (METEO)

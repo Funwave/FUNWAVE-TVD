@@ -1,22 +1,21 @@
 ### Plot vessel_island wave  ###
 
 # import necessary modules
+import os
 import numpy as np               
 import matplotlib.pyplot as plt
 
-
 # write your OWN PC folder path for fdir & fdep
 # Remember that we use for Mac & Linux machines '/', while on windows '\'
-fdir = '/Users/Gaby/Desktop/Postprocessing-Workshop/simple_cases_output/vessel_island/vessel_island_beach/'
+fdir = os.path.join('Users','Gaby','FUNWAVE-TVD','simple_cases','vessel_island_beach','output')
+fdep = os.path.join('Users','Gaby','FUNWAVE-TVD','simple_cases','vessel_island_beach')
 
-fdep ='/Users/Gaby/Desktop/Postprocessing-Workshop/simple_cases_output/vessel_island/'
-
-mask=np.loadtxt(fdir+'eta_00001')
+maskFile = os.path.join(fdir,'eta_00001')
+mask=np.loadtxt(maskFile)
 
 # ask user for plot start and end numbers
-ns = int(raw_input("Input plot start number: ns = "))
-ne = int(raw_input("Input plot end number: ne = "))
-
+ns = int(input("Input plot start number: ns = "))
+ne = int(input("Input plot end number: ne = "))
 
 dep1 = np.loadtxt(fdep+'depth.txt')
 
@@ -29,19 +28,16 @@ dx = 1.0
 x = np.asarray([(float(xa)*dx)+x0 for xa in range(m)])
 y = np.asarray([(float(ya)*dx)+y0 for ya in range(n)])
 
-
 # figure size option 
 wid = 8   # width
 length = 6 # length
 
-
-
 for num in range(ns,ne):
-
     # plot figure
     fig = plt.figure(num,figsize=(wid,length),dpi=200)
     fnum= '%.5d' % num
-    eta = np.loadtxt(fdir+'eta_'+fnum)
+    etaFileLoop = os.path.join(fdir,'eta_'+str(fnum))
+    eta = np.loadtxt(etaFileLoop)
 
     eta_masked = np.ma.masked_where(eta>10.0,eta) # do nt plot where eta>10. 0
 
@@ -54,7 +50,6 @@ for num in range(ns,ne):
     plt.xlabel('X (m)')
     plt.axis('tight')
 
-
     NUM = num-1
     hour = '%.4d' % (NUM*2.5)
     title = 'Time = '+ hour + ' sec'
@@ -63,5 +58,5 @@ for num in range(ns,ne):
     name = 'fig_eta_%.4d' % (num)
 
     # save figure
-    fig.savefig(name+'.jpg', dpi=fig.dpi)
+    fig.savefig(name+'.png', dpi=fig.dpi)
     

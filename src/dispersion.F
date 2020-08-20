@@ -100,14 +100,15 @@ SUBROUTINE CAL_DISPERSION
     ENDIF
 
 ! DU DV
-     DO J=1,Nloc
-     DO I=1,Mloc
+     DO J=1,Nloc-1
+     DO I=1,Mloc-1
        DU(I,J)=Max(Depth(I,J),MinDepthFrc)*U(I,J)
        DV(I,J)=Max(Depth(I,J),MinDepthFrc)*V(I,J)
 
 ! ykchoi (15. 08. 18)
 ! Computation of Etat for ( U1p )_t in conservative form of Shi et al. (2012)
 ! and for viscosity of wave maker
+! 05/25/2018, ykchoi pointed a bug: J=1,Nloc, I=1,Mloc
 
 # if defined (CARTESIAN)
        ETAT(I,J)=-(P(I+1,J)-P(I,J))/DX-(Q(I,J+1)-Q(I,J))/DY

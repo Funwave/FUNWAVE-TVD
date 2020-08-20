@@ -60,6 +60,86 @@ FUNCTION sq(X)
       REAL(SP), INTENT(IN) :: x
       sq = X*X
 END FUNCTION
+
+MODULE veg
+CONTAINS
+  FUNCTION veg_integrand_x(z,u0,v0,alpha,beta,h,hx,hy,hxx,hxy,hyy,eta,&
+             v0x, v0y, v0yy, v0xy, u0x, u0y, u0xx, u0xy)
+     USE PARAM
+     IMPLICIT NONE
+     REAL(SP), INTENT(IN) :: z
+     REAL(sp), INTENT(IN) :: u0, v0, alpha, beta, h, hx, hy, hxx, hyy, hxy, eta
+     REAL(sp), INTENT(IN) :: v0x, v0y, v0yy, v0xy
+     REAL(sp), INTENT(IN) :: u0x, u0y, u0xx, u0xy
+     REAL(SP) :: ux, uy
+     REAL(SP) :: veg_integrand_x
+     ux = u0 + ((beta*eta + alpha*h - z)*(2*hxx*u0 + beta*eta*u0xx + 2*h*u0xx + &
+       alpha*h*u0xx + 2*hxy*v0 + 2*hy*v0x + beta*eta*v0xy + 2*h*v0xy + alpha*h*v0xy + &
+       2*hx*(2*u0x + v0y) + u0xx*z + v0xy*z))/2.
+     uy = v0 + ((beta*eta + alpha*h - z)*(2*hxy*u0 + beta*eta*u0xy + 2*h*u0xy + &
+       alpha*h*u0xy + 2*hx*u0y + 2*hyy*v0 + 2*hy*(u0x + 2*v0y) + beta*eta*v0yy + 2*h*v0yy + &
+       alpha*h*v0yy + u0xy*z + v0yy*z))/2.
+     veg_integrand_x = sqrt(ux**2+uy**2)*ux
+  END FUNCTION
+  FUNCTION veg_integrand_y(z,u0,v0,alpha,beta,h,hx,hy,hxx,hxy,hyy,eta,&
+             v0x, v0y, v0yy, v0xy, u0x, u0y, u0xx, u0xy)
+     USE PARAM
+     IMPLICIT NONE
+     REAL(SP), INTENT(IN) :: z
+     REAL(sp), INTENT(IN) :: u0, v0, alpha, beta, h, hx, hy, hxx, hyy, hxy, eta
+     REAL(sp), INTENT(IN) :: v0x, v0y, v0yy, v0xy
+     REAL(sp), INTENT(IN) :: u0x, u0y, u0xx, u0xy
+     REAL(SP) :: ux, uy
+     REAL(SP) :: veg_integrand_y
+     ux = u0 + ((beta*eta + alpha*h - z)*(2*hxx*u0 + beta*eta*u0xx + 2*h*u0xx + &
+       alpha*h*u0xx + 2*hxy*v0 + 2*hy*v0x + beta*eta*v0xy + 2*h*v0xy + alpha*h*v0xy + &
+       2*hx*(2*u0x + v0y) + u0xx*z + v0xy*z))/2.
+     uy = v0 + ((beta*eta + alpha*h - z)*(2*hxy*u0 + beta*eta*u0xy + 2*h*u0xy + &
+       alpha*h*u0xy + 2*hx*u0y + 2*hyy*v0 + 2*hy*(u0x + 2*v0y) + beta*eta*v0yy + 2*h*v0yy + &
+       alpha*h*v0yy + u0xy*z + v0yy*z))/2.
+     veg_integrand_y = sqrt(ux**2+uy**2)*uy
+  END FUNCTION
+  FUNCTION veg_integral_x(zlo,zhi,npts, &
+             u0,v0,alpha,beta,h,hx,hy,hxx,hxy,hyy,eta,&
+             v0x, v0y, v0yy, v0xy, u0x, u0y, u0xx, u0xy)
+     USE PARAM
+     IMPLICIT NONE
+     REAL(SP), INTENT(IN) :: zlo,zhi
+     INTEGER :: npts
+     REAL(sp), INTENT(IN) :: u0, v0, alpha, beta, h, hx, hy, hxx, hyy, hxy, eta
+     REAL(sp), INTENT(IN) :: v0x, v0y, v0yy, v0xy
+     REAL(sp), INTENT(IN) :: u0x, u0y, u0xx, u0xy
+     REAL(sp) :: dz, zsum, z, veg_integral_x
+     dz = (zhi-zlo)/npts
+     do i = 1, npts
+       z = zlo+(i-.5)*dz
+       zsum = zsum + veg_integrand_x(z,u0,v0,alpha,beta,h,hx,hy,hxx,hxy,hyy,eta,&
+             v0x, v0y, v0yy, v0xy, u0x, u0y, u0xx, u0xy)
+     enddo
+     veg_integral_x = zsum
+  END FUNCTION
+  FUNCTION veg_integral_y(zlo,zhi,npts, &
+             u0,v0,alpha,beta,h,hx,hy,hxx,hxy,hyy,eta,&
+             v0x, v0y, v0yy, v0xy, u0x, u0y, u0xx, u0xy)
+     USE PARAM
+     IMPLICIT NONE
+     REAL(SP), INTENT(IN) :: zlo,zhi
+     INTEGER :: npts
+     REAL(sp), INTENT(IN) :: u0, v0, alpha, beta, h, hx, hy, hxx, hyy, hxy, eta
+     REAL(sp), INTENT(IN) :: v0x, v0y, v0yy, v0xy
+     REAL(sp), INTENT(IN) :: u0x, u0y, u0xx, u0xy
+     REAL(sp) :: dz, zsum, z, veg_integral_y
+     dz = (zhi-zlo)/npts
+     do i = 1, npts
+       z = zlo+(i-.5)*dz
+       zsum = zsum + veg_integrand_x(z,u0,v0,alpha,beta,h,hx,hy,hxx,hxy,hyy,eta,&
+             v0x, v0y, v0yy, v0xy, u0x, u0y, u0xx, u0xy)
+     enddo
+     veg_integral_y = zsum
+  END FUNCTION
+END MODULE
+
+
 SUBROUTINE SourceTerms
      USE GLOBAL
 # if defined (VESSEL)
@@ -69,6 +149,7 @@ SUBROUTINE SourceTerms
      USE METEO_MODULE
 # endif
 
+     USE VEG
      IMPLICIT NONE
      REAL,DIMENSION(Mloc,Nloc) :: nu_vis
      LOGICAL :: PQ_scheme = .FALSE.
@@ -79,6 +160,7 @@ SUBROUTINE SourceTerms
      REAL(SP) :: zterm0,zterm1,zterm2,zup,zdn,za
      !REAL(SP) :: veg_cd,veg_n,veg_bv
      REAL(SP), PARAMETER :: alpha_v = -.53, beta_v = .47
+     INTEGER, PARAMETER :: npts = 15
      INTEGER :: kd,kf
      INTERFACE
        FUNCTION sq(x)
@@ -530,38 +612,25 @@ SUBROUTINE SourceTerms
         DIV1X(ux(i,j),u)
         DIV2X(uxx(i,j),u)
         DIV1Y(uy(i,j),u)
-        !DIV2Y(uyy(i,j),u)
         DIVXY(uxy(i,j),u)
 
         ! Make sure we have the latest derivatives of v
         DIV1X(vx(i,j),u)
-        !DIV2X(vxx(i,j),u)
         DIV1Y(vy(i,j),v)
         DIV2Y(vyy(i,j),v)
         DIVXY(vxy(i,j),v)
 
-        a_x = 2*hx*ux(i,j) + hy*vx(i,j) + hx*vy(i,j) + uxx(i,j)*h(i, j) + vxy(i,j)*h(i, j) + hxx*u(i, j) + hxy*v(i, j)
-        a_y = hy*ux(i,j) + hx*uy(i,j) + 2*hy*vy(i,j) + uxy(i,j)*h(i, j) + vyy(i,j)*h(i, j) + hxy*u(i, j) + hyy*v(i, j)
-        b_x = uxx(i,j) + vxy(i,j)
-        b_y = uxy(i,j) + vyy(i,j)
-        s = sqrt(u(i,j)**2+v(i,j)**2)
-        C0_x = s*(u(i,j)+2*za*a_x+za**2*b_x)
-        C0_y = s*(u(i,j)+2*za*a_y+za**2*b_y)
-        C1_x = -2*a_x*s
-        C1_y = -2*a_y*s
-        C2_x = -b_x*s
-        C2_y = -b_y*s
-        zterm0 = (zup-zdn)
-        zterm1 = (zup**2-zdn**2)/2.0
-        zterm2 = (zup**3-zdn**3)/3.0
-        fricx = C0_x*zterm0+C1_x*zterm1+C2_x*zterm2
-        fricy = C0_y*zterm0+C1_y*zterm1+C2_y*zterm2
-
-        rr = sqrt(u0(i,j)**2+v0(i,j)**2);
-        th = atan2(v0(i,j),u0(i,j));
+        fricx = veg_integral_x(zdn,zup,npts, &
+             u(i,j),v(i,j),alpha_v,beta_v,h(i,j),hx,hy,hxx,hxy,hyy,eta(i,j),&
+             vx(i,j), vy(i,j), vyy(i,j), vxy(i,j), ux(i,j),&
+             uy(i,j), uxx(i,j), uxy(i,j))
+        fricy = veg_integral_y(zdn,zup,npts, &
+             u(i,j),v(i,j),alpha_v,beta_v,h(i,j),hx,hy,hxx,hxy,hyy,eta(i,j),&
+             vx(i,j), vy(i,j), vyy(i,j), vxy(i,j), ux(i,j),&
+             uy(i,j), uxx(i,j), uxy(i,j))
 
         SourceX(i,j) = SourceX(i,j) + fac*fricx
-        SourceY(i,j) = SourceY(i,j) + fac*fricx
+        SourceY(i,j) = SourceY(i,j) + fac*fricy
 # endif
 
      ENDDO
